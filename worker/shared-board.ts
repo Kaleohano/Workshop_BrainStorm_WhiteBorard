@@ -169,16 +169,7 @@ export class BoardRoom extends DurableObject<Env> {
       payload,
       updatedAt,
     );
-    await this.env.DB
-      .prepare(
-        `INSERT INTO board_state (id, payload, updated_at)
-         VALUES (?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           payload = excluded.payload,
-           updated_at = excluded.updated_at`,
-      )
-      .bind(BOARD_ID, payload, updatedAt)
-      .run();
+    this.ctx.waitUntil(this.ctx.storage.setAlarm(Date.now() + 250));
     return { board, updatedAt };
   }
 
@@ -190,6 +181,22 @@ export class BoardRoom extends DurableObject<Env> {
         socket.close(1011, "Unable to deliver update");
       }
     }
+  }
+
+  private async applyEnvelope(envelope: ActionEnvelope) {
+    if (!envelope.operationId || !envelope.action?.type) {
+      throw new Error("Invalid action envelope");
+    }
+    const result = await this.mutate(envelope.action);
+    this.broadcast(
+      JSON.stringify({
+        type: "action",
+        operationId: envelope.operationId,
+        action: envelope.action,
+        updatedAt: result.updatedAt,
+      }),
+    );
+    return result.updatedAt;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -208,8 +215,9 @@ export class BoardRoom extends DurableObject<Env> {
       });
     }
     if (request.method === "POST") {
-      const action = (await request.json()) as BoardAction;
-      return Response.json(await this.mutate(action));
+      const envelope = (await request.json()) as ActionEnvelope;
+      const updatedAt = await this.applyEnvelope(envelope);
+      return Response.json({ saved: true, operationId: envelope.operationId, updatedAt });
     }
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
@@ -222,18 +230,7 @@ export class BoardRoom extends DurableObject<Env> {
         return;
       }
       const envelope = JSON.parse(raw) as ActionEnvelope;
-      if (!envelope.operationId || !envelope.action?.type) {
-        throw new Error("Invalid action envelope");
-      }
-      const result = await this.mutate(envelope.action);
-      this.broadcast(
-        JSON.stringify({
-          type: "action",
-          operationId: envelope.operationId,
-          action: envelope.action,
-          updatedAt: result.updatedAt,
-        }),
-      );
+      await this.applyEnvelope(envelope);
     } catch {
       socket.send(JSON.stringify({ type: "error", message: "Unable to apply action" }));
     }
@@ -246,6 +243,21 @@ export class BoardRoom extends DurableObject<Env> {
     _wasClean: boolean,
   ) {
     socket.close(code, reason);
+  }
+
+  async alarm() {
+    const current = await this.getBoard();
+    await this.env.DB
+      .prepare(
+        `INSERT INTO board_state (id, payload, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           payload = excluded.payload,
+           updated_at = excluded.updated_at
+         WHERE excluded.updated_at > board_state.updated_at`,
+      )
+      .bind(BOARD_ID, JSON.stringify(current.board), current.updatedAt)
+      .run();
   }
 }
 

@@ -499,9 +499,9 @@ export default function Home() {
   }
 
   async function sendBoardAction(action: BoardAction) {
+    const operationId = crypto.randomUUID();
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN) {
-      const operationId = crypto.randomUUID();
       processedOperationsRef.current.add(operationId);
       socket.send(JSON.stringify({ operationId, action }));
       return;
@@ -510,20 +510,17 @@ export default function Home() {
       const response = await requestSharedBoard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(action),
+        body: JSON.stringify({ operationId, action }),
       });
       if (!response.ok) throw new Error("Unable to save shared board");
       const result = (await response.json()) as {
-        board?: SharedBoardState;
+        saved?: boolean;
         updatedAt?: number;
       };
-      if (result.board && (result.updatedAt || 0) >= latestRevisionRef.current) {
-        latestRevisionRef.current = result.updatedAt || 0;
-        setNotes(migrateNotes(result.board.notes));
-        setBoardTitle(result.board.boardTitle);
-        setTitleDraft(result.board.boardTitle);
-        setVisitorCount(result.board.visitorCount);
-      }
+      latestRevisionRef.current = Math.max(
+        latestRevisionRef.current,
+        result.updatedAt || 0,
+      );
     } catch {
       console.warn("共享白板暂时保存失败，本地内容仍已保留。");
     }
