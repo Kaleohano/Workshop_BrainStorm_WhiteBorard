@@ -181,6 +181,12 @@ export default function Home() {
   const panRef = useRef<PanState | null>(null);
   const savedViewRef = useRef<{ scrollLeft: number; scrollTop: number } | null>(null);
   const scrollSaveFrameRef = useRef<number | null>(null);
+  const latestSharedBoardRef = useRef<SharedBoardState>({
+    version: 1,
+    notes: STARTER_NOTES,
+    boardTitle: DEFAULT_BOARD_TITLE,
+    visitorCount: 7,
+  });
 
   useEffect(() => {
     const savedBoard = window.localStorage.getItem(BOARD_STORAGE_KEY);
@@ -326,38 +332,49 @@ export default function Home() {
 
   useEffect(() => {
     if (!cloudReady) return;
-    const timer = window.setTimeout(async () => {
-      const sharedBoard: SharedBoardState = {
-        version: 1,
-        notes,
-        boardTitle,
-        visitorCount,
-      };
-      try {
-        await fetch(getSharedBoardUrl(), {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sharedBoard),
-        });
-      } catch {
-        console.warn("共享白板暂时保存失败，本地内容仍已保留。");
-      }
-    }, 300);
-
-    return () => window.clearTimeout(timer);
+    const sharedBoard: SharedBoardState = {
+      version: 1,
+      notes,
+      boardTitle,
+      visitorCount,
+    };
+    latestSharedBoardRef.current = sharedBoard;
+    void saveSharedBoard(sharedBoard);
   }, [notes, boardTitle, visitorCount, cloudReady]);
 
   useEffect(() => {
     if (!hydrated) return;
-    const saveBeforeLeaving = () => saveCurrentView();
+    const saveBeforeLeaving = () => {
+      saveCurrentView();
+      if (cloudReady) {
+        void saveSharedBoard(latestSharedBoardRef.current, true);
+      }
+    };
     window.addEventListener("pagehide", saveBeforeLeaving);
     return () => window.removeEventListener("pagehide", saveBeforeLeaving);
-  }, [hydrated]);
+  }, [hydrated, cloudReady]);
 
   function changeParticipant(value: string) {
     const name = value.slice(0, 14);
     setParticipant(name);
     if (name.trim()) window.localStorage.setItem("sparkboard-participant", name.trim());
+  }
+
+  async function saveSharedBoard(
+    sharedBoard: SharedBoardState,
+    keepalive = false,
+  ) {
+    try {
+      const response = await fetch(getSharedBoardUrl(), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sharedBoard),
+        keepalive,
+      });
+      if (!response.ok) throw new Error("Unable to save shared board");
+    } catch {
+      console.warn("共享白板暂时保存失败，本地内容仍已保留。");
+    }
   }
 
   function requestBoardTitleChange() {
