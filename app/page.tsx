@@ -9,9 +9,7 @@ import {
   Minus,
   Note,
   Plus,
-  Smiley,
   Sparkle,
-  TextT,
   Trash,
   UsersThree,
 } from "@phosphor-icons/react";
@@ -45,6 +43,13 @@ type DragState = {
   startY: number;
   width: number;
   height: number;
+};
+
+type PanState = {
+  startClientX: number;
+  startClientY: number;
+  startScrollLeft: number;
+  startScrollTop: number;
 };
 
 const COLORS = ["butter", "rose", "blue", "green", "violet"];
@@ -134,9 +139,12 @@ export default function Home() {
   const [participant, setParticipant] = useState("新朋友");
   const [color, setColor] = useState(COLORS[0]);
   const [zoom, setZoom] = useState(100);
+  const [tool, setTool] = useState<"select" | "pan">("select");
   const [hydrated, setHydrated] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const viewportRef = useRef<HTMLElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  const panRef = useRef<PanState | null>(null);
 
   useEffect(() => {
     const savedNotes = window.localStorage.getItem("sparkboard-notes");
@@ -218,6 +226,7 @@ export default function Home() {
   }
 
   function startDrag(event: ReactPointerEvent<HTMLElement>, note: BoardNote) {
+    if (tool !== "select") return;
     if ((event.target as HTMLElement).closest("button")) return;
     const canvas = event.currentTarget.parentElement;
     if (!canvas) return;
@@ -232,6 +241,41 @@ export default function Home() {
       width: canvas.clientWidth,
       height: canvas.clientHeight,
     };
+  }
+
+  function startPan(event: ReactPointerEvent<HTMLElement>) {
+    if (tool !== "pan") return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panRef.current = {
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startScrollLeft: viewport.scrollLeft,
+      startScrollTop: viewport.scrollTop,
+    };
+  }
+
+  function moveCanvas(event: ReactPointerEvent<HTMLElement>) {
+    const pan = panRef.current;
+    const viewport = viewportRef.current;
+    if (!pan || !viewport) return;
+    viewport.scrollLeft = pan.startScrollLeft - (event.clientX - pan.startClientX);
+    viewport.scrollTop = pan.startScrollTop - (event.clientY - pan.startClientY);
+  }
+
+  function endPan() {
+    panRef.current = null;
+  }
+
+  function focusComposer() {
+    setTool("select");
+    inputRef.current?.focus();
+  }
+
+  function resetView() {
+    setZoom(100);
+    viewportRef.current?.scrollTo({ left: 0, top: 0, behavior: "smooth" });
   }
 
   function moveNote(event: ReactPointerEvent<HTMLElement>) {
@@ -292,17 +336,45 @@ export default function Home() {
       </header>
 
       <aside className="tool-rail" aria-label="白板工具">
-        <button className="selected" aria-label="选择工具"><CursorClick weight="fill" /></button>
-        <button aria-label="抓手工具"><HandGrabbing /></button>
+        <button
+          className={tool === "select" ? "selected" : ""}
+          aria-label="选择与拖动便利贴"
+          aria-pressed={tool === "select"}
+          data-label="选择"
+          onClick={() => setTool("select")}
+        >
+          <CursorClick weight={tool === "select" ? "fill" : "regular"} />
+        </button>
+        <button
+          className={tool === "pan" ? "selected" : ""}
+          aria-label="拖动画布"
+          aria-pressed={tool === "pan"}
+          data-label="抓手"
+          onClick={() => setTool("pan")}
+        >
+          <HandGrabbing weight={tool === "pan" ? "fill" : "regular"} />
+        </button>
         <span />
-        <button aria-label="便利贴" onClick={() => inputRef.current?.focus()}><Note weight="fill" /></button>
-        <button aria-label="文字工具"><TextT /></button>
-        <button aria-label="表情工具"><Smiley /></button>
-        <span />
-        <button aria-label="新建便利贴" onClick={() => inputRef.current?.focus()}><Plus /></button>
+        <button aria-label="新建便利贴" data-label="便利贴" onClick={focusComposer}>
+          <Note weight="fill" />
+        </button>
+        <button aria-label="按热度整理便利贴" data-label="整理" onClick={tidyNotes}>
+          <Sparkle />
+        </button>
+        <button aria-label="复位画布" data-label="复位" onClick={resetView}>
+          <ArrowsOut />
+        </button>
       </aside>
 
-      <section className="canvas-viewport" aria-label="自由脑暴白板">
+      <section
+        ref={viewportRef}
+        className={`canvas-viewport ${tool === "pan" ? "pan-mode" : ""}`}
+        aria-label="自由脑暴白板"
+        onPointerDown={startPan}
+        onPointerMove={moveCanvas}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
+      >
         <div className="canvas" style={{ "--zoom": zoom / 100 } as React.CSSProperties}>
           <div className="canvas-heading">
             <span>一起想想</span>
@@ -356,13 +428,13 @@ export default function Home() {
         <button onClick={() => setZoom((value) => Math.min(130, value + 10))} aria-label="放大">
           <Plus />
         </button>
-        <button onClick={() => setZoom(100)} aria-label="恢复原始大小">
+        <button onClick={resetView} aria-label="恢复原始大小">
           <ArrowsOut />
         </button>
       </div>
 
       <form className="idea-dock" onSubmit={addNote}>
-        <button type="button" className="dock-note-icon" onClick={() => inputRef.current?.focus()} aria-label="输入新点子">
+        <button type="button" className="dock-note-icon" onClick={focusComposer} aria-label="输入新点子">
           <Note weight="fill" />
         </button>
         <label>
@@ -398,10 +470,6 @@ export default function Home() {
         </button>
       </form>
 
-      <button className="tidy-button" onClick={tidyNotes}>
-        <Sparkle weight="fill" />
-        按热度整理
-      </button>
     </main>
   );
 }
