@@ -50,9 +50,23 @@ type PanState = {
   startScrollTop: number;
 };
 
+type BoardSnapshot = {
+  version: 1;
+  notes: BoardNote[];
+  participant: string;
+  boardTitle: string;
+  visitorCount: number;
+  draft: string;
+  color: string;
+  zoom: number;
+  scrollLeft: number;
+  scrollTop: number;
+};
+
 const COLORS = ["butter", "rose", "blue", "green", "violet"];
 const NOTE_POSITION_SCALE = 12;
 const DEFAULT_BOARD_TITLE = "下一个值得尝试的点子是什么？";
+const BOARD_STORAGE_KEY = "inspiration-capsule-board";
 
 const STARTER_NOTES: BoardNote[] = [
   {
@@ -148,8 +162,43 @@ export default function Home() {
   const viewportRef = useRef<HTMLElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<PanState | null>(null);
+  const savedViewRef = useRef<{ scrollLeft: number; scrollTop: number } | null>(null);
+  const scrollSaveFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const savedBoard = window.localStorage.getItem(BOARD_STORAGE_KEY);
+    if (savedBoard) {
+      try {
+        const snapshot = JSON.parse(savedBoard) as Partial<BoardSnapshot>;
+        const title = snapshot.boardTitle?.trim() || DEFAULT_BOARD_TITLE;
+        const name = snapshot.participant?.trim() || makeName();
+        setNotes(migrateNotes(snapshot.notes));
+        setParticipant(name);
+        setBoardTitle(title);
+        setTitleDraft(title);
+        setVisitorCount(
+          typeof snapshot.visitorCount === "number" ? snapshot.visitorCount : 7,
+        );
+        setText(typeof snapshot.draft === "string" ? snapshot.draft.slice(0, 140) : "");
+        setColor(COLORS.includes(snapshot.color || "") ? snapshot.color! : COLORS[0]);
+        setZoom(
+          typeof snapshot.zoom === "number"
+            ? Math.min(130, Math.max(70, snapshot.zoom))
+            : 100,
+        );
+        savedViewRef.current = {
+          scrollLeft:
+            typeof snapshot.scrollLeft === "number" ? snapshot.scrollLeft : 0,
+          scrollTop: typeof snapshot.scrollTop === "number" ? snapshot.scrollTop : 0,
+        };
+        window.localStorage.setItem("sparkboard-participant", name);
+        setHydrated(true);
+        return;
+      } catch {
+        window.localStorage.removeItem(BOARD_STORAGE_KEY);
+      }
+    }
+
     const savedNotes = window.localStorage.getItem("sparkboard-notes");
     const savedName = window.localStorage.getItem("sparkboard-participant");
     const savedTitle = window.localStorage.getItem("sparkboard-title");
@@ -173,15 +222,65 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (hydrated) {
-      window.localStorage.setItem("sparkboard-notes", JSON.stringify(notes));
-    }
-  }, [notes, hydrated]);
+    if (!hydrated) return;
+    const viewport = viewportRef.current;
+    const snapshot: BoardSnapshot = {
+      version: 1,
+      notes,
+      participant: participant.trim() || "匿名伙伴",
+      boardTitle,
+      visitorCount,
+      draft: text,
+      color,
+      zoom,
+      scrollLeft: viewport?.scrollLeft || 0,
+      scrollTop: viewport?.scrollTop || 0,
+    };
+    window.localStorage.setItem(BOARD_STORAGE_KEY, JSON.stringify(snapshot));
+    window.localStorage.setItem("sparkboard-notes", JSON.stringify(notes));
+    window.localStorage.setItem("sparkboard-title", boardTitle);
+    window.localStorage.setItem("sparkboard-visitors", String(visitorCount));
+  }, [
+    notes,
+    participant,
+    boardTitle,
+    visitorCount,
+    text,
+    color,
+    zoom,
+    hydrated,
+  ]);
 
   useEffect(() => {
     if (!hydrated) return;
-    const frame = window.requestAnimationFrame(() => centerCanvas("auto"));
+    const frame = window.requestAnimationFrame(() => {
+      const viewport = viewportRef.current;
+      const savedView = savedViewRef.current;
+      if (viewport && savedView) {
+        viewport.scrollTo({
+          left: savedView.scrollLeft,
+          top: savedView.scrollTop,
+          behavior: "auto",
+        });
+        savedViewRef.current = null;
+      } else {
+        centerCanvas("auto");
+      }
+    });
     return () => window.cancelAnimationFrame(frame);
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || titleDraft.trim() === boardTitle) return;
+    const timer = window.setTimeout(commitBoardTitle, 500);
+    return () => window.clearTimeout(timer);
+  }, [titleDraft, boardTitle, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const saveBeforeLeaving = () => saveCurrentView();
+    window.addEventListener("pagehide", saveBeforeLeaving);
+    return () => window.removeEventListener("pagehide", saveBeforeLeaving);
   }, [hydrated]);
 
   function changeParticipant(value: string) {
@@ -291,6 +390,7 @@ export default function Home() {
 
   function endPan() {
     panRef.current = null;
+    saveCurrentView();
   }
 
   function focusComposer() {
@@ -305,6 +405,36 @@ export default function Home() {
       left: (viewport.scrollWidth - viewport.clientWidth) / 2,
       top: (viewport.scrollHeight - viewport.clientHeight) / 2,
       behavior,
+    });
+  }
+
+  function saveCurrentView() {
+    if (!hydrated) return;
+    const viewport = viewportRef.current;
+    const savedBoard = window.localStorage.getItem(BOARD_STORAGE_KEY);
+    if (!viewport || !savedBoard) return;
+    try {
+      const snapshot = JSON.parse(savedBoard) as BoardSnapshot;
+      window.localStorage.setItem(
+        BOARD_STORAGE_KEY,
+        JSON.stringify({
+          ...snapshot,
+          scrollLeft: viewport.scrollLeft,
+          scrollTop: viewport.scrollTop,
+        }),
+      );
+    } catch {
+      // The next state update will replace an invalid snapshot.
+    }
+  }
+
+  function queueCurrentViewSave() {
+    if (scrollSaveFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollSaveFrameRef.current);
+    }
+    scrollSaveFrameRef.current = window.requestAnimationFrame(() => {
+      saveCurrentView();
+      scrollSaveFrameRef.current = null;
     });
   }
 
@@ -425,6 +555,7 @@ export default function Home() {
         onPointerMove={moveCanvas}
         onPointerUp={endPan}
         onPointerCancel={endPan}
+        onScroll={queueCurrentViewSave}
       >
         <div className="canvas" style={{ "--zoom": zoom / 100 } as React.CSSProperties}>
           {notes.map((note) => (
