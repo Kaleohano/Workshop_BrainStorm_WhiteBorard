@@ -420,6 +420,67 @@ button { color: inherit; }
 .zoom-control button:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .zoom-control span { width: 40px; color: var(--muted); text-align: center; font-size: 10px; }
 .zoom-control svg { width: 14px; height: 14px; }
+
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(48, 42, 35, .24);
+  backdrop-filter: blur(3px);
+}
+.confirm-dialog {
+  width: min(420px, 100%);
+  padding: 25px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 24px 70px rgba(58, 45, 33, .18);
+}
+.confirm-kicker {
+  color: var(--accent-deep);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .08em;
+}
+.confirm-dialog h2 {
+  margin: 8px 0 9px;
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 21px;
+  font-weight: 600;
+}
+.confirm-dialog p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.confirm-actions {
+  margin-top: 22px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.confirm-actions button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+.confirm-actions button:hover { background: var(--canvas); }
+.confirm-actions .confirm-primary {
+  color: #fffaf3;
+  border-color: var(--accent-deep);
+  background: var(--accent-deep);
+}
+.confirm-actions .confirm-primary:hover { background: var(--accent-hover); }
+
 button:focus-visible, input:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

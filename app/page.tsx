@@ -153,6 +153,7 @@ export default function Home() {
   const [participant, setParticipant] = useState("新朋友");
   const [boardTitle, setBoardTitle] = useState(DEFAULT_BOARD_TITLE);
   const [titleDraft, setTitleDraft] = useState(DEFAULT_BOARD_TITLE);
+  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
   const [visitorCount, setVisitorCount] = useState(7);
   const [color, setColor] = useState(COLORS[0]);
   const [zoom, setZoom] = useState(100);
@@ -271,12 +272,6 @@ export default function Home() {
   }, [hydrated]);
 
   useEffect(() => {
-    if (!hydrated || titleDraft.trim() === boardTitle) return;
-    const timer = window.setTimeout(commitBoardTitle, 500);
-    return () => window.clearTimeout(timer);
-  }, [titleDraft, boardTitle, hydrated]);
-
-  useEffect(() => {
     if (!hydrated) return;
     const saveBeforeLeaving = () => saveCurrentView();
     window.addEventListener("pagehide", saveBeforeLeaving);
@@ -289,17 +284,30 @@ export default function Home() {
     if (name.trim()) window.localStorage.setItem("sparkboard-participant", name.trim());
   }
 
-  function commitBoardTitle() {
+  function requestBoardTitleChange() {
     const nextTitle = titleDraft.trim() || boardTitle;
     setTitleDraft(nextTitle);
     if (nextTitle === boardTitle) return;
+    setPendingTitle(nextTitle);
+  }
+
+  function confirmBoardTitleChange() {
+    if (!pendingTitle) return;
+    const nextTitle = pendingTitle;
     setBoardTitle(nextTitle);
+    setTitleDraft(nextTitle);
     setNotes([]);
     setText("");
     setVisitorCount(0);
+    setPendingTitle(null);
     window.localStorage.setItem("sparkboard-title", nextTitle);
     window.localStorage.setItem("sparkboard-visitors", "0");
     centerCanvas();
+  }
+
+  function cancelBoardTitleChange() {
+    setTitleDraft(boardTitle);
+    setPendingTitle(null);
   }
 
   function addNote(event: FormEvent) {
@@ -487,7 +495,7 @@ export default function Home() {
             value={titleDraft}
             maxLength={32}
             onChange={(event) => setTitleDraft(event.target.value)}
-            onBlur={commitBoardTitle}
+            onBlur={requestBoardTitleChange}
             onKeyDown={(event) => {
               if (event.key === "Enter") event.currentTarget.blur();
               if (event.key === "Escape") {
@@ -645,6 +653,40 @@ export default function Home() {
           <Plus weight="bold" />
         </button>
       </form>
+
+      {pendingTitle && (
+        <div className="confirm-backdrop" role="presentation">
+          <section
+            className="confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirm-title-heading"
+            aria-describedby="confirm-title-description"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") cancelBoardTitleChange();
+            }}
+          >
+            <span className="confirm-kicker">修改脑暴主题</span>
+            <h2 id="confirm-title-heading">确定要换一个新主题吗？</h2>
+            <p id="confirm-title-description">
+              标题将改为“{pendingTitle}”。确认后，当前便利贴和观看人数会被清空，此操作无法撤销。
+            </p>
+            <div className="confirm-actions">
+              <button type="button" onClick={cancelBoardTitleChange}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="confirm-primary"
+                onClick={confirmBoardTitleChange}
+                autoFocus
+              >
+                确认并清空
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
     </main>
   );
