@@ -1,30 +1,32 @@
 @import "tailwindcss";
 
 :root {
-  --surface: #f3f0e8;
-  --canvas: #f8f6f0;
-  --panel: #fbfaf7;
-  --ink: #292824;
-  --muted: #77736a;
-  --line: #d7d1c5;
-  --accent: #b84f34;
-  --accent-deep: #963d29;
-  --grid: rgba(79, 74, 65, .08);
-  --shadow: rgba(70, 61, 49, .12);
+  --surface: #faf8f2;
+  --canvas: #fffdf8;
+  --panel: #fffefa;
+  --ink: #3a342e;
+  --muted: #746d64;
+  --line: #e3ded4;
+  --accent: #d96b4b;
+  --accent-deep: #b94f34;
+  --accent-hover: #a8442d;
+  --grid: rgba(101, 91, 78, .065);
+  --shadow: rgba(104, 86, 65, .09);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface: #24231f;
-    --canvas: #292823;
-    --panel: #302f2a;
-    --ink: #ece9e1;
-    --muted: #aaa59a;
-    --line: #4b4942;
-    --accent: #d87858;
-    --accent-deep: #bd6044;
-    --grid: rgba(229, 223, 208, .07);
-    --shadow: rgba(0, 0, 0, .24);
+    --surface: #24211d;
+    --canvas: #2d2924;
+    --panel: #35302a;
+    --ink: #f3eee5;
+    --muted: #bdb3a6;
+    --line: #514a42;
+    --accent: #ee8b68;
+    --accent-deep: #a84b35;
+    --accent-hover: #943f2d;
+    --grid: rgba(243, 238, 229, .065);
+    --shadow: rgba(15, 12, 9, .2);
   }
 }
 
@@ -61,8 +63,8 @@ button { color: inherit; }
   height: 34px;
   display: grid;
   place-items: center;
-  color: #f8f4eb;
-  background: var(--accent);
+  color: #fffaf3;
+  background: var(--accent-deep);
   border-radius: 4px;
 }
 .brand-tile svg { width: 17px; height: 17px; }
@@ -89,8 +91,8 @@ button { color: inherit; }
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  color: #f8f4eb;
-  background: var(--ink);
+  color: #fffaf3;
+  background: var(--accent-deep);
   border-radius: 3px;
   font-family: Georgia, "Songti SC", serif;
   font-size: 13px;
@@ -122,7 +124,7 @@ button { color: inherit; }
   border: 1px solid var(--line);
   border-radius: 5px;
   background: var(--panel);
-  box-shadow: 3px 4px 0 color-mix(in srgb, var(--line) 65%, transparent);
+  box-shadow: 0 8px 24px var(--shadow);
 }
 .tool-rail button, .zoom-control button {
   position: relative;
@@ -136,7 +138,7 @@ button { color: inherit; }
 .tool-rail button { width: 31px; height: 31px; }
 .tool-rail button:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .tool-rail button:active { transform: translateY(1px); }
-.tool-rail button.selected { color: #f8f4eb; background: var(--ink); }
+.tool-rail button.selected { color: #fffaf3; background: var(--accent-deep); }
 .tool-rail svg { width: 17px; height: 17px; }
 .tool-rail > span { height: 1px; margin: 3px 2px; background: var(--line); }
 .tool-rail button::after {
@@ -148,7 +150,7 @@ button { color: inherit; }
   border-radius: 3px;
   color: var(--ink);
   background: var(--panel);
-  box-shadow: 2px 2px 0 var(--line);
+  box-shadow: 0 6px 18px var(--shadow);
   font-size: 10px;
   white-space: nowrap;
   opacity: 0;
@@ -233,9 +235,9 @@ button { color: inherit; }
   transform: rotate(var(--tilt));
   transform-origin: 50% 50%;
   color: #2b2924;
-  border: 1px solid rgba(74, 65, 48, .12);
+  border: 1px solid rgba(74, 65, 48, .1);
   border-radius: 2px;
-  box-shadow: 4px 6px 0 rgba(71, 61, 44, .10);
+  box-shadow: 0 10px 24px rgba(98, 77, 52, .1);
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -245,14 +247,14 @@ button { color: inherit; }
   z-index: 10;
   cursor: grabbing;
   transform: rotate(0) scale(1.015);
-  box-shadow: 7px 9px 0 rgba(71, 61, 44, .13);
+  box-shadow: 0 16px 32px rgba(98, 77, 52, .14);
 }
 .sticky-note::before {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(135deg, rgba(255,255,255,.18), transparent 42%);
+  background: linear-gradient(135deg, rgba(255,255,255,.32), transparent 46%);
 }
 .sticky-note::after {
   content: "";
@@ -265,11 +267,11 @@ button { color: inherit; }
   border-left: 1px solid rgba(76, 64, 46, .13);
   background: rgba(83, 67, 44, .08);
 }
-.sticky-note.butter, .color-picker .butter { background: #e8dca8; }
-.sticky-note.rose, .color-picker .rose { background: #ddbbb0; }
-.sticky-note.blue, .color-picker .blue { background: #b9cbd0; }
-.sticky-note.green, .color-picker .green { background: #becbb6; }
-.sticky-note.violet, .color-picker .violet { background: #cbbfc7; }
+.sticky-note.butter, .color-picker .butter { background: #f4e58a; }
+.sticky-note.rose, .color-picker .rose { background: #f2c0b1; }
+.sticky-note.blue, .color-picker .blue { background: #c4dde5; }
+.sticky-note.green, .color-picker .green { background: #cbe0b9; }
+.sticky-note.violet, .color-picker .violet { background: #d8cbe0; }
 
 .sticky-note > p {
   position: relative;
@@ -324,7 +326,7 @@ button { color: inherit; }
   font-weight: 750;
 }
 .sticky-note footer button:hover, .sticky-note footer button.liked {
-  color: #8f3426;
+  color: #9e3f2a;
   background: rgba(248,246,240,.64);
   transform: translateY(-1px);
 }
@@ -357,7 +359,7 @@ button { color: inherit; }
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel);
-  box-shadow: 4px 5px 0 color-mix(in srgb, var(--line) 72%, transparent);
+  box-shadow: 0 12px 34px var(--shadow);
 }
 .dock-note-icon {
   width: 40px;
@@ -368,7 +370,7 @@ button { color: inherit; }
   color: #4a422b;
   border: 1px solid rgba(78,66,43,.15);
   border-radius: 3px;
-  background: #e8dca8;
+  background: #f4e58a;
   cursor: pointer;
 }
 .dock-note-icon svg { width: 20px; height: 20px; }
@@ -408,13 +410,13 @@ button { color: inherit; }
   gap: 6px;
   border: 0;
   border-radius: 3px;
-  color: #f8f4eb;
+  color: #fffaf3;
   background: var(--accent-deep);
   cursor: pointer;
   font-size: 11px;
   font-weight: 750;
 }
-.submit-note:hover { background: var(--accent); }
+.submit-note:hover { background: var(--accent-hover); }
 .submit-note:active { transform: translateY(1px); }
 .submit-note:disabled { opacity: .42; cursor: default; }
 .submit-note svg { width: 14px; height: 14px; }
@@ -425,7 +427,7 @@ button { color: inherit; }
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
-  box-shadow: 3px 4px 0 color-mix(in srgb, var(--line) 68%, transparent);
+  box-shadow: 0 8px 24px var(--shadow);
 }
 .zoom-control {
   right: 14px;
