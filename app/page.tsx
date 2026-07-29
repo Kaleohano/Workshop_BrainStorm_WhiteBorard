@@ -70,6 +70,15 @@ type SharedBoardState = {
   visitorCount: number;
 };
 
+type BoardAction =
+  | { type: "add-note"; note: BoardNote }
+  | { type: "delete-note"; id: string }
+  | { type: "move-note"; id: string; x: number; y: number }
+  | { type: "toggle-like"; id: string; delta: 1 | -1; liked: boolean }
+  | { type: "tidy-notes"; positions: Array<Pick<BoardNote, "id" | "x" | "y" | "tilt">> }
+  | { type: "reset-board"; boardTitle: string }
+  | { type: "increment-visitor" };
+
 const COLORS = ["butter", "rose", "blue", "green", "violet"];
 const NOTE_POSITION_SCALE = 12;
 const DEFAULT_BOARD_TITLE = "下一个值得尝试的点子是什么？";
@@ -197,12 +206,7 @@ export default function Home() {
   const panRef = useRef<PanState | null>(null);
   const savedViewRef = useRef<{ scrollLeft: number; scrollTop: number } | null>(null);
   const scrollSaveFrameRef = useRef<number | null>(null);
-  const latestSharedBoardRef = useRef<SharedBoardState>({
-    version: 1,
-    notes: STARTER_NOTES,
-    boardTitle: DEFAULT_BOARD_TITLE,
-    visitorCount: 7,
-  });
+  const latestRevisionRef = useRef(0);
 
   useEffect(() => {
     const savedBoard = window.localStorage.getItem(BOARD_STORAGE_KEY);
@@ -313,7 +317,22 @@ export default function Home() {
     if (!hydrated) return;
     const controller = new AbortController();
 
-    async function loadSharedBoard() {
+    function applySharedBoard(
+      board: Partial<SharedBoardState> | null | undefined,
+      updatedAt: number,
+    ) {
+      if (!board || updatedAt < latestRevisionRef.current) return;
+      latestRevisionRef.current = updatedAt;
+      const title = board.boardTitle?.trim() || DEFAULT_BOARD_TITLE;
+      setNotes(migrateNotes(board.notes));
+      setBoardTitle(title);
+      setTitleDraft((current) => (current === boardTitle ? title : current));
+      setVisitorCount(
+        typeof board.visitorCount === "number" ? board.visitorCount : 0,
+      );
+    }
+
+    async function loadSharedBoard(incrementVisitor = false) {
       try {
         const response = await requestSharedBoard({
           cache: "no-store",
@@ -322,49 +341,29 @@ export default function Home() {
         if (!response.ok) throw new Error("Unable to load shared board");
         const result = (await response.json()) as {
           board?: Partial<SharedBoardState> | null;
+          updatedAt?: number;
         };
-
-        if (result.board) {
-          const title = result.board.boardTitle?.trim() || DEFAULT_BOARD_TITLE;
-          setNotes(migrateNotes(result.board.notes));
-          setBoardTitle(title);
-          setTitleDraft(title);
-          setVisitorCount(
-            typeof result.board.visitorCount === "number"
-              ? result.board.visitorCount + 1
-              : 1,
-          );
-        }
+        applySharedBoard(result.board, result.updatedAt || 0);
         setCloudReady(true);
+        if (incrementVisitor) void sendBoardAction({ type: "increment-visitor" });
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         console.warn("共享白板暂时无法连接，已继续使用本地内容。");
       }
     }
 
-    loadSharedBoard();
-    return () => controller.abort();
-  }, [hydrated]);
-
-  useEffect(() => {
-    if (!cloudReady) return;
-    const sharedBoard: SharedBoardState = {
-      version: 1,
-      notes,
-      boardTitle,
-      visitorCount,
+    void loadSharedBoard(true);
+    const poll = window.setInterval(() => void loadSharedBoard(), 1500);
+    return () => {
+      controller.abort();
+      window.clearInterval(poll);
     };
-    latestSharedBoardRef.current = sharedBoard;
-    void saveSharedBoard(sharedBoard);
-  }, [notes, boardTitle, visitorCount, cloudReady]);
+  }, [hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
     const saveBeforeLeaving = () => {
       saveCurrentView();
-      if (cloudReady) {
-        void saveSharedBoard(latestSharedBoardRef.current, true);
-      }
     };
     window.addEventListener("pagehide", saveBeforeLeaving);
     return () => window.removeEventListener("pagehide", saveBeforeLeaving);
@@ -376,18 +375,25 @@ export default function Home() {
     if (name.trim()) window.localStorage.setItem("sparkboard-participant", name.trim());
   }
 
-  async function saveSharedBoard(
-    sharedBoard: SharedBoardState,
-    keepalive = false,
-  ) {
+  async function sendBoardAction(action: BoardAction) {
     try {
       const response = await requestSharedBoard({
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sharedBoard),
-        keepalive,
+        body: JSON.stringify(action),
       });
       if (!response.ok) throw new Error("Unable to save shared board");
+      const result = (await response.json()) as {
+        board?: SharedBoardState;
+        updatedAt?: number;
+      };
+      if (result.board && (result.updatedAt || 0) >= latestRevisionRef.current) {
+        latestRevisionRef.current = result.updatedAt || 0;
+        setNotes(migrateNotes(result.board.notes));
+        setBoardTitle(result.board.boardTitle);
+        setTitleDraft(result.board.boardTitle);
+        setVisitorCount(result.board.visitorCount);
+      }
     } catch {
       console.warn("共享白板暂时保存失败，本地内容仍已保留。");
     }
@@ -409,6 +415,8 @@ export default function Home() {
     setText("");
     setVisitorCount(0);
     setPendingTitle(null);
+    latestRevisionRef.current += 1;
+    void sendBoardAction({ type: "reset-board", boardTitle: nextTitle });
     window.localStorage.setItem("sparkboard-title", nextTitle);
     window.localStorage.setItem("sparkboard-visitors", "0");
     centerCanvas();
@@ -424,26 +432,28 @@ export default function Home() {
     const idea = text.trim();
     if (!idea) return;
     const slot = notes.length;
-    setNotes((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        text: idea,
-        author: participant.trim() || makeName(),
-        color,
-        likes: 0,
-        liked: false,
-        createdAt: Date.now(),
-        x: 14 + ((slot * 19) % 66),
-        y: 16 + ((slot * 23) % 58),
-        tilt: (slot % 5) - 2,
-      },
-    ]);
+    const note: BoardNote = {
+      id: crypto.randomUUID(),
+      text: idea,
+      author: participant.trim() || makeName(),
+      color,
+      likes: 0,
+      liked: false,
+      createdAt: Date.now(),
+      x: 14 + ((slot * 19) % 66),
+      y: 16 + ((slot * 23) % 58),
+      tilt: (slot % 5) - 2,
+    };
+    setNotes((current) => [...current, note]);
+    void sendBoardAction({ type: "add-note", note });
     setText("");
     setColor(COLORS[(COLORS.indexOf(color) + 1) % COLORS.length]);
   }
 
   function toggleLike(id: string) {
+    const note = notes.find((item) => item.id === id);
+    if (!note) return;
+    const liked = !note.liked;
     setNotes((current) =>
       current.map((note) =>
         note.id === id
@@ -451,23 +461,35 @@ export default function Home() {
           : note,
       ),
     );
+    void sendBoardAction({
+      type: "toggle-like",
+      id,
+      delta: note.liked ? -1 : 1,
+      liked,
+    });
   }
 
   function removeNote(id: string) {
     setNotes((current) => current.filter((note) => note.id !== id));
+    void sendBoardAction({ type: "delete-note", id });
   }
 
   function tidyNotes() {
-    setNotes((current) =>
-      [...current]
+    setNotes((current) => {
+      const tidied = [...current]
         .sort((a, b) => b.likes - a.likes)
         .map((note, index) => ({
           ...note,
           x: 12 + (index % 4) * 22,
           y: 17 + Math.floor(index / 4) * 36,
           tilt: (index % 3) - 1,
-        })),
-    );
+        }));
+      void sendBoardAction({
+        type: "tidy-notes",
+        positions: tidied.map(({ id, x, y, tilt }) => ({ id, x, y, tilt })),
+      });
+      return tidied;
+    });
   }
 
   function startDrag(event: ReactPointerEvent<HTMLElement>, note: BoardNote) {
@@ -584,6 +606,12 @@ export default function Home() {
           : note,
       ),
     );
+    void sendBoardAction({
+      type: "move-note",
+      id: drag.id,
+      x: Number.isNaN(x) ? drag.startX : x,
+      y: Number.isNaN(y) ? drag.startY : y,
+    });
     dragRef.current = null;
   }
 
