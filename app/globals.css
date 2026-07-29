@@ -73,7 +73,21 @@ button { color: inherit; }
 .brand-lockup div span { display: none; }
 
 .board-title { display: grid; justify-items: center; gap: 2px; opacity: .78; }
-.board-title strong { font-family: Georgia, "Songti SC", serif; font-size: 12px; font-weight: 500; }
+.board-title input {
+  width: min(380px, 36vw);
+  padding: 2px 6px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  outline: 0;
+  color: var(--ink);
+  background: transparent;
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+}
+.board-title input:hover { border-bottom-color: var(--line); }
+.board-title input:focus { border-bottom-color: var(--accent); }
 .board-title span { gap: 5px; color: var(--muted); font-size: 10px; }
 .board-title svg { width: 13px; height: 13px; }
 
@@ -412,12 +426,21 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 }
 
 @media (max-width: 760px) {
-  .board-bar { height: 52px; padding: 0 9px; grid-template-columns: auto 1fr; }
-  .brand-lockup div span, .board-title { display: none; }
+  .board-bar {
+    height: 76px;
+    padding: 0 9px;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: 46px 30px;
+    gap: 0 10px;
+  }
+  .brand-lockup div span { display: none; }
+  .board-title { display: grid; grid-column: 1 / -1; width: 100%; }
+  .board-title input { width: min(420px, 82vw); font-size: 11px; }
+  .board-title span { display: none; }
   .participant { justify-self: end; }
   .participant label span { display: none; }
   .participant input { width: 108px; }
-  .canvas-viewport { inset: 52px 0 0; }
+  .canvas-viewport { inset: 76px 0 0; }
   .tool-rail { left: 7px; }
   .tool-rail button::after { display: none; }
   .idea-dock {

@@ -52,6 +52,7 @@ type PanState = {
 
 const COLORS = ["butter", "rose", "blue", "green", "violet"];
 const NOTE_POSITION_SCALE = 12;
+const DEFAULT_BOARD_TITLE = "下一个值得尝试的点子是什么？";
 
 const STARTER_NOTES: BoardNote[] = [
   {
@@ -136,6 +137,9 @@ export default function Home() {
   const [notes, setNotes] = useState<BoardNote[]>(STARTER_NOTES);
   const [text, setText] = useState("");
   const [participant, setParticipant] = useState("新朋友");
+  const [boardTitle, setBoardTitle] = useState(DEFAULT_BOARD_TITLE);
+  const [titleDraft, setTitleDraft] = useState(DEFAULT_BOARD_TITLE);
+  const [visitorCount, setVisitorCount] = useState(7);
   const [color, setColor] = useState(COLORS[0]);
   const [zoom, setZoom] = useState(100);
   const [tool, setTool] = useState<"select" | "pan">("select");
@@ -148,6 +152,8 @@ export default function Home() {
   useEffect(() => {
     const savedNotes = window.localStorage.getItem("sparkboard-notes");
     const savedName = window.localStorage.getItem("sparkboard-participant");
+    const savedTitle = window.localStorage.getItem("sparkboard-title");
+    const savedVisitors = window.localStorage.getItem("sparkboard-visitors");
     if (savedNotes) {
       try {
         setNotes(migrateNotes(JSON.parse(savedNotes)));
@@ -156,7 +162,12 @@ export default function Home() {
       }
     }
     const name = savedName || makeName();
+    const title = savedTitle || DEFAULT_BOARD_TITLE;
+    const visitors = savedVisitors === null ? 7 : Number.parseInt(savedVisitors, 10);
     setParticipant(name);
+    setBoardTitle(title);
+    setTitleDraft(title);
+    setVisitorCount(Number.isNaN(visitors) ? 7 : visitors);
     window.localStorage.setItem("sparkboard-participant", name);
     setHydrated(true);
   }, []);
@@ -177,6 +188,19 @@ export default function Home() {
     const name = value.slice(0, 14);
     setParticipant(name);
     if (name.trim()) window.localStorage.setItem("sparkboard-participant", name.trim());
+  }
+
+  function commitBoardTitle() {
+    const nextTitle = titleDraft.trim() || boardTitle;
+    setTitleDraft(nextTitle);
+    if (nextTitle === boardTitle) return;
+    setBoardTitle(nextTitle);
+    setNotes([]);
+    setText("");
+    setVisitorCount(0);
+    window.localStorage.setItem("sparkboard-title", nextTitle);
+    window.localStorage.setItem("sparkboard-visitors", "0");
+    centerCanvas();
   }
 
   function addNote(event: FormEvent) {
@@ -328,8 +352,21 @@ export default function Home() {
         </div>
 
         <div className="board-title">
-          <strong>下一个值得尝试的点子是什么？</strong>
-          <span><UsersThree /> {notes.length + 3} 人来过</span>
+          <input
+            aria-label="脑暴主题"
+            value={titleDraft}
+            maxLength={32}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            onBlur={commitBoardTitle}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key === "Escape") {
+                setTitleDraft(boardTitle);
+                event.currentTarget.blur();
+              }
+            }}
+          />
+          <span><UsersThree /> {visitorCount} 人来过</span>
         </div>
 
         <div className="participant">
