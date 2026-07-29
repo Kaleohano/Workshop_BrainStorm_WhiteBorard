@@ -1,19 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1];
+const basePath =
+  process.env.GITHUB_ACTIONS === "true" && repositoryName
+    ? `/${repositoryName}`
+    : "";
+const siteUrl =
+  basePath
+    ? `https://kaleohano.github.io/${repositoryName}`
+    : "https://sparkboard-ideas.itskaleohano.chatgpt.site";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://sparkboard-ideas.itskaleohano.chatgpt.site"),
+  metadataBase: new URL(siteUrl),
   title: "灵感胶囊｜打开就能一起想",
   description: "一个打开就能用的自由脑暴白板，写便利贴、拖动想法、为好点子投票。",
   openGraph: {
@@ -29,8 +28,8 @@ export const metadata: Metadata = {
     images: ["/og-v6.png"],
   },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: `${basePath}/favicon.svg`,
+    shortcut: `${basePath}/favicon.svg`,
   },
 };
 
@@ -41,11 +40,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
