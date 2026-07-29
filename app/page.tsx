@@ -390,12 +390,6 @@ export default function Home() {
         onPointerCancel={endPan}
       >
         <div className="canvas" style={{ "--zoom": zoom / 100 } as React.CSSProperties}>
-          <div className="canvas-heading">
-            <span>一起想想</span>
-            <h1>先写下来，再判断。</h1>
-            <p>拖动便利贴整理思路，为喜欢的点子投一票。</p>
-          </div>
-
           {notes.map((note) => (
             <article
               className={`sticky-note ${note.color}`}

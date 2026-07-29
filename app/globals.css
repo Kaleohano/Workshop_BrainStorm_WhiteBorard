@@ -185,44 +185,6 @@ button { color: inherit; }
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 48px 48px;
 }
-.canvas::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: calc(50% - 410px);
-  width: 940px;
-  height: 820px;
-  transform: translateX(-50%);
-  border: 1px solid var(--line);
-  pointer-events: none;
-}
-.canvas-heading {
-  position: absolute;
-  left: 50%;
-  top: calc(50% - 455px);
-  z-index: 3;
-  width: 390px;
-  transform: translateX(-50%);
-  text-align: center;
-  pointer-events: none;
-}
-.canvas-heading > span {
-  display: inline-block;
-  margin-bottom: 4px;
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 700;
-}
-.canvas-heading h1 {
-  margin: 0;
-  font-family: Georgia, "Songti SC", serif;
-  font-size: 25px;
-  font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: -.035em;
-}
-.canvas-heading p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
-
 .sticky-note {
   --x: 20%;
   --y: 20%;
