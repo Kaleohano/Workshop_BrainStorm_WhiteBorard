@@ -322,7 +322,7 @@ export default function Home() {
         <div className="brand-lockup">
           <span className="brand-tile"><Sparkle weight="fill" /></span>
           <div>
-            <strong>灵光板</strong>
+            <strong>灵感胶囊</strong>
             <span>产品脑暴</span>
           </div>
         </div>
