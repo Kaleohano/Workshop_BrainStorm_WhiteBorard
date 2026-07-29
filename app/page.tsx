@@ -74,8 +74,10 @@ const COLORS = ["butter", "rose", "blue", "green", "violet"];
 const NOTE_POSITION_SCALE = 12;
 const DEFAULT_BOARD_TITLE = "下一个值得尝试的点子是什么？";
 const BOARD_STORAGE_KEY = "inspiration-capsule-board";
-const SHARED_BOARD_URL =
-  "https://inspiration-capsule-shared-board.inspiration-capsule.workers.dev/api/board";
+const SHARED_BOARD_URLS = [
+  "https://inspiration-capsule-board-api.pages.dev/api/board",
+  "https://inspiration-capsule-shared-board.inspiration-capsule.workers.dev/api/board",
+];
 
 const STARTER_NOTES: BoardNote[] = [
   {
@@ -137,10 +139,24 @@ function makeName() {
   }`;
 }
 
-function getSharedBoardUrl() {
+function getSharedBoardUrls() {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname)
-    ? "/api/board"
-    : SHARED_BOARD_URL;
+    ? ["/api/board"]
+    : SHARED_BOARD_URLS;
+}
+
+async function requestSharedBoard(init?: RequestInit) {
+  let lastError: unknown;
+  for (const url of getSharedBoardUrls()) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok) return response;
+      lastError = new Error(`Shared board request failed: ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Shared board is unavailable");
 }
 
 function migrateNotes(value: unknown): BoardNote[] {
@@ -299,7 +315,7 @@ export default function Home() {
 
     async function loadSharedBoard() {
       try {
-        const response = await fetch(getSharedBoardUrl(), {
+        const response = await requestSharedBoard({
           cache: "no-store",
           signal: controller.signal,
         });
@@ -365,7 +381,7 @@ export default function Home() {
     keepalive = false,
   ) {
     try {
-      const response = await fetch(getSharedBoardUrl(), {
+      const response = await requestSharedBoard({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sharedBoard),
