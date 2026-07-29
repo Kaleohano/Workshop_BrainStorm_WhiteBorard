@@ -13,8 +13,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "灵光板｜一起把点子贴出来",
-  description: "一个打开就能用的轻量头脑风暴便利贴墙。",
+  metadataBase: new URL("https://sparkboard-ideas.itskaleohano.chatgpt.site"),
+  title: "灵光板｜打开就能一起想",
+  description: "一个打开就能用的自由脑暴白板，写便利贴、拖动想法、为好点子投票。",
+  openGraph: {
+    title: "灵光板｜打开就能一起想",
+    description: "自由写便利贴、拖动想法，为好点子投票。",
+    type: "website",
+    images: [{ url: "/og.png", width: 1731, height: 909, alt: "灵光板白板与彩色便利贴" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "灵光板｜打开就能一起想",
+    description: "自由写便利贴、拖动想法，为好点子投票。",
+    images: ["/og.png"],
+  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

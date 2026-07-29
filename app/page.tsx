@@ -1,8 +1,29 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  ArrowsOut,
+  CursorClick,
+  DotsThree,
+  HandGrabbing,
+  Heart,
+  Minus,
+  Note,
+  Plus,
+  Smiley,
+  Sparkle,
+  TextT,
+  Trash,
+  UsersThree,
+} from "@phosphor-icons/react";
+import {
+  FormEvent,
+  PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-type Note = {
+type BoardNote = {
   id: string;
   text: string;
   author: string;
@@ -10,57 +31,126 @@ type Note = {
   likes: number;
   liked: boolean;
   createdAt: number;
+  x: number;
+  y: number;
+  tilt: number;
 };
 
-const COLORS = ["sun", "mint", "sky", "peach", "lilac"];
+type DragState = {
+  id: string;
+  element: HTMLElement;
+  startClientX: number;
+  startClientY: number;
+  startX: number;
+  startY: number;
+  width: number;
+  height: number;
+};
 
-const STARTER_NOTES: Note[] = [
+const COLORS = ["butter", "rose", "blue", "green", "violet"];
+
+const STARTER_NOTES: BoardNote[] = [
   {
     id: "starter-1",
     text: "如果我们的产品只能做好一件事，那会是什么？",
-    author: "小北",
-    color: "sun",
+    author: "会发光的海獭",
+    color: "butter",
     likes: 8,
     liked: false,
     createdAt: 3,
+    x: 15,
+    y: 18,
+    tilt: -2,
   },
   {
     id: "starter-2",
-    text: "做一个「反向功能」：让用户主动选择今天不做什么。",
-    author: "阿卓",
-    color: "mint",
+    text: "做一个「反向功能」：让大家主动选择今天不做什么。",
+    author: "认真散步的云",
+    color: "rose",
     likes: 13,
     liked: false,
     createdAt: 2,
+    x: 42,
+    y: 28,
+    tilt: 1,
   },
   {
     id: "starter-3",
     text: "每周五把最受欢迎的想法变成一个小实验。",
-    author: "Mia",
-    color: "sky",
+    author: "晚睡的山雀",
+    color: "blue",
     likes: 5,
     liked: false,
     createdAt: 1,
+    x: 68,
+    y: 14,
+    tilt: 2,
+  },
+  {
+    id: "starter-4",
+    text: "先写下十个不靠谱的答案，也许第十一个就是惊喜。",
+    author: "慢半拍的星星",
+    color: "green",
+    likes: 3,
+    liked: false,
+    createdAt: 0,
+    x: 32,
+    y: 61,
+    tilt: -1,
   },
 ];
 
+const ADJECTIVES = ["会发光的", "爱散步的", "慢半拍的", "很认真的", "有点困的", "好奇的"];
+const NOUNS = ["海獭", "山雀", "云朵", "小熊", "月亮", "松果"];
+
+function makeName() {
+  return `${ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]}${
+    NOUNS[Math.floor(Math.random() * NOUNS.length)]
+  }`;
+}
+
+function migrateNotes(value: unknown): BoardNote[] {
+  if (!Array.isArray(value)) return STARTER_NOTES;
+  return value.map((item, index) => {
+    const note = item as Partial<BoardNote>;
+    return {
+      id: note.id || crypto.randomUUID(),
+      text: note.text || "",
+      author: note.author || "匿名伙伴",
+      color: COLORS.includes(note.color || "") ? note.color! : COLORS[index % COLORS.length],
+      likes: note.likes || 0,
+      liked: note.liked || false,
+      createdAt: note.createdAt || index,
+      x: typeof note.x === "number" ? note.x : 12 + (index % 3) * 28,
+      y: typeof note.y === "number" ? note.y : 18 + Math.floor(index / 3) * 35,
+      tilt: typeof note.tilt === "number" ? note.tilt : (index % 5) - 2,
+    };
+  });
+}
+
 export default function Home() {
-  const [notes, setNotes] = useState<Note[]>(STARTER_NOTES);
+  const [notes, setNotes] = useState<BoardNote[]>(STARTER_NOTES);
   const [text, setText] = useState("");
-  const [author, setAuthor] = useState("");
+  const [participant, setParticipant] = useState("新朋友");
   const [color, setColor] = useState(COLORS[0]);
-  const [sort, setSort] = useState<"new" | "popular">("new");
+  const [zoom, setZoom] = useState(100);
   const [hydrated, setHydrated] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const dragRef = useRef<DragState | null>(null);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("sparkboard-notes");
-    if (saved) {
+    const savedNotes = window.localStorage.getItem("sparkboard-notes");
+    const savedName = window.localStorage.getItem("sparkboard-participant");
+    if (savedNotes) {
       try {
-        setNotes(JSON.parse(saved));
+        setNotes(migrateNotes(JSON.parse(savedNotes)));
       } catch {
-        // Keep the welcoming starter notes if saved data is unavailable.
+        setNotes(STARTER_NOTES);
       }
     }
+    const name = savedName || makeName();
+    setParticipant(name);
+    window.localStorage.setItem("sparkboard-participant", name);
     setHydrated(true);
   }, []);
 
@@ -70,29 +160,30 @@ export default function Home() {
     }
   }, [notes, hydrated]);
 
-  const visibleNotes = useMemo(
-    () =>
-      [...notes].sort((a, b) =>
-        sort === "popular" ? b.likes - a.likes : b.createdAt - a.createdAt,
-      ),
-    [notes, sort],
-  );
+  function changeParticipant(value: string) {
+    const name = value.slice(0, 14);
+    setParticipant(name);
+    if (name.trim()) window.localStorage.setItem("sparkboard-participant", name.trim());
+  }
 
   function addNote(event: FormEvent) {
     event.preventDefault();
     const idea = text.trim();
     if (!idea) return;
-
+    const slot = notes.length;
     setNotes((current) => [
       ...current,
       {
         id: crypto.randomUUID(),
         text: idea,
-        author: author.trim() || "匿名伙伴",
+        author: participant.trim() || makeName(),
         color,
         likes: 0,
         liked: false,
         createdAt: Date.now(),
+        x: 14 + ((slot * 19) % 66),
+        y: 16 + ((slot * 23) % 58),
+        tilt: (slot % 5) - 2,
       },
     ]);
     setText("");
@@ -103,11 +194,7 @@ export default function Home() {
     setNotes((current) =>
       current.map((note) =>
         note.id === id
-          ? {
-              ...note,
-              liked: !note.liked,
-              likes: note.likes + (note.liked ? -1 : 1),
-            }
+          ? { ...note, liked: !note.liked, likes: note.likes + (note.liked ? -1 : 1) }
           : note,
       ),
     );
@@ -117,117 +204,204 @@ export default function Home() {
     setNotes((current) => current.filter((note) => note.id !== id));
   }
 
+  function tidyNotes() {
+    setNotes((current) =>
+      [...current]
+        .sort((a, b) => b.likes - a.likes)
+        .map((note, index) => ({
+          ...note,
+          x: 12 + (index % 4) * 22,
+          y: 17 + Math.floor(index / 4) * 36,
+          tilt: (index % 3) - 1,
+        })),
+    );
+  }
+
+  function startDrag(event: ReactPointerEvent<HTMLElement>, note: BoardNote) {
+    if ((event.target as HTMLElement).closest("button")) return;
+    const canvas = event.currentTarget.parentElement;
+    if (!canvas) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      id: note.id,
+      element: event.currentTarget,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: note.x,
+      startY: note.y,
+      width: canvas.clientWidth,
+      height: canvas.clientHeight,
+    };
+  }
+
+  function moveNote(event: ReactPointerEvent<HTMLElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.id !== event.currentTarget.dataset.noteId) return;
+    const x = Math.max(1, Math.min(84, drag.startX + ((event.clientX - drag.startClientX) / drag.width) * 100));
+    const y = Math.max(4, Math.min(78, drag.startY + ((event.clientY - drag.startClientY) / drag.height) * 100));
+    drag.element.style.setProperty("--x", `${x}%`);
+    drag.element.style.setProperty("--y", `${y}%`);
+  }
+
+  function endDrag(event: ReactPointerEvent<HTMLElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.id !== event.currentTarget.dataset.noteId) return;
+    const x = Number.parseFloat(drag.element.style.getPropertyValue("--x"));
+    const y = Number.parseFloat(drag.element.style.getPropertyValue("--y"));
+    setNotes((current) =>
+      current.map((note) =>
+        note.id === drag.id
+          ? { ...note, x: Number.isNaN(x) ? note.x : x, y: Number.isNaN(y) ? note.y : y }
+          : note,
+      ),
+    );
+    dragRef.current = null;
+  }
+
   return (
-    <main>
-      <header className="topbar">
-        <a className="brand" href="#" aria-label="灵光板首页">
-          <span className="brand-mark" aria-hidden="true">✦</span>
-          灵光板
-        </a>
-        <div className="live-pill">
-          <span aria-hidden="true" />
-          自由脑暴中
+    <main className="whiteboard-shell">
+      <header className="board-bar">
+        <div className="brand-lockup">
+          <span className="brand-tile"><Sparkle weight="fill" /></span>
+          <div>
+            <strong>灵光板</strong>
+            <span>产品脑暴</span>
+          </div>
+        </div>
+
+        <div className="board-title">
+          <strong>下一个值得尝试的点子是什么？</strong>
+          <span><UsersThree /> {notes.length + 3} 人来过</span>
+        </div>
+
+        <div className="participant">
+          <span className="avatar">{participant.trim().slice(0, 1) || "你"}</span>
+          <label>
+            <span>你在白板上的名字</span>
+            <input
+              aria-label="你在白板上的名字"
+              value={participant}
+              onChange={(event) => changeParticipant(event.target.value)}
+              onBlur={() => {
+                if (!participant.trim()) changeParticipant(makeName());
+              }}
+            />
+          </label>
+          <DotsThree weight="bold" />
         </div>
       </header>
 
-      <section className="hero">
-        <p className="eyebrow">IDEAS WANT COMPANY</p>
-        <h1>把灵光一闪，<br /><em>留在这里。</em></h1>
-        <p className="intro">
-          不必完美，不用署名。写下一张便利贴，或为让你心动的点子投上一票。
-        </p>
+      <aside className="tool-rail" aria-label="白板工具">
+        <button className="selected" aria-label="选择工具"><CursorClick weight="fill" /></button>
+        <button aria-label="抓手工具"><HandGrabbing /></button>
+        <span />
+        <button aria-label="便利贴" onClick={() => inputRef.current?.focus()}><Note weight="fill" /></button>
+        <button aria-label="文字工具"><TextT /></button>
+        <button aria-label="表情工具"><Smiley /></button>
+        <span />
+        <button aria-label="新建便利贴" onClick={() => inputRef.current?.focus()}><Plus /></button>
+      </aside>
 
-        <form className="composer" onSubmit={addNote}>
-          <label htmlFor="idea">你的新点子</label>
-          <textarea
-            id="idea"
-            value={text}
-            onChange={(event) => setText(event.target.value.slice(0, 180))}
-            placeholder="比如：如果我们反过来做呢？"
-            rows={3}
-          />
-          <div className="composer-footer">
-            <div className="note-options">
-              <input
-                aria-label="署名"
-                value={author}
-                onChange={(event) => setAuthor(event.target.value.slice(0, 12))}
-                placeholder="你的名字（选填）"
-              />
-              <div className="colors" aria-label="选择便利贴颜色">
-                {COLORS.map((item) => (
-                  <button
-                    className={`${item} ${color === item ? "selected" : ""}`}
-                    key={item}
-                    type="button"
-                    aria-label={`选择${item}色`}
-                    aria-pressed={color === item}
-                    onClick={() => setColor(item)}
-                  />
-                ))}
-              </div>
-            </div>
-            <button className="add-button" type="submit" disabled={!text.trim()}>
-              贴上去 <span aria-hidden="true">↗</span>
-            </button>
+      <section className="canvas-viewport" aria-label="自由脑暴白板">
+        <div className="canvas" style={{ "--zoom": zoom / 100 } as React.CSSProperties}>
+          <div className="canvas-heading">
+            <span>一起想想</span>
+            <h1>先写下来，再判断。</h1>
+            <p>拖动便利贴整理思路，为喜欢的点子投一票。</p>
           </div>
-          <span className="count">{text.length}/180</span>
-        </form>
-      </section>
 
-      <section className="board" aria-label="点子便利贴墙">
-        <div className="board-heading">
-          <div>
-            <p className="section-kicker">THE WALL</p>
-            <h2>大家的想法 <sup>{notes.length}</sup></h2>
-          </div>
-          <div className="sorter" aria-label="排序方式">
-            <button className={sort === "new" ? "active" : ""} onClick={() => setSort("new")}>
-              最新
-            </button>
-            <button className={sort === "popular" ? "active" : ""} onClick={() => setSort("popular")}>
-              最热
-            </button>
-          </div>
-        </div>
-
-        {visibleNotes.length ? (
-          <div className="notes-grid">
-            {visibleNotes.map((note, index) => (
-              <article className={`note ${note.color}`} key={note.id} style={{ "--tilt": `${(index % 5) - 2}deg` } as React.CSSProperties}>
-                <button className="delete" onClick={() => removeNote(note.id)} aria-label={`删除点子：${note.text}`}>
-                  ×
+          {notes.map((note) => (
+            <article
+              className={`sticky-note ${note.color}`}
+              data-note-id={note.id}
+              key={note.id}
+              style={{
+                "--x": `${note.x}%`,
+                "--y": `${note.y}%`,
+                "--tilt": `${note.tilt}deg`,
+              } as React.CSSProperties}
+              onPointerDown={(event) => startDrag(event, note)}
+              onPointerMove={moveNote}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+            >
+              <div className="note-actions">
+                <button onClick={() => removeNote(note.id)} aria-label={`删除点子：${note.text}`}>
+                  <Trash />
                 </button>
-                <span className="quote" aria-hidden="true">“</span>
-                <p>{note.text}</p>
-                <footer>
-                  <span>— {note.author}</span>
-                  <button
-                    className={note.liked ? "liked" : ""}
-                    onClick={() => toggleLike(note.id)}
-                    aria-label={`${note.liked ? "取消点赞" : "点赞"}，当前 ${note.likes} 票`}
-                    aria-pressed={note.liked}
-                  >
-                    <span aria-hidden="true">{note.liked ? "♥" : "♡"}</span> {note.likes}
-                  </button>
-                </footer>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="empty">
-            <span aria-hidden="true">✦</span>
-            <p>墙上还空着。第一个好点子，等你来贴。</p>
-          </div>
-        )}
+              </div>
+              <p>{note.text}</p>
+              <footer>
+                <button
+                  className={note.liked ? "liked" : ""}
+                  onClick={() => toggleLike(note.id)}
+                  aria-label={`${note.liked ? "取消点赞" : "点赞"}，当前 ${note.likes} 票`}
+                  aria-pressed={note.liked}
+                >
+                  <Heart weight={note.liked ? "fill" : "regular"} />
+                  {note.likes}
+                </button>
+                <span className="signature">{note.author}</span>
+              </footer>
+            </article>
+          ))}
+        </div>
       </section>
 
-      <footer className="page-footer">
-        <p>没有坏点子，只有还没被听见的点子。</p>
-        {notes.length > 0 && (
-          <button onClick={() => setNotes([])}>清空这块板</button>
-        )}
-      </footer>
+      <div className="zoom-control" aria-label="画布缩放">
+        <button onClick={() => setZoom((value) => Math.max(70, value - 10))} aria-label="缩小">
+          <Minus />
+        </button>
+        <span>{zoom}%</span>
+        <button onClick={() => setZoom((value) => Math.min(130, value + 10))} aria-label="放大">
+          <Plus />
+        </button>
+        <button onClick={() => setZoom(100)} aria-label="恢复原始大小">
+          <ArrowsOut />
+        </button>
+      </div>
+
+      <form className="idea-dock" onSubmit={addNote}>
+        <button type="button" className="dock-note-icon" onClick={() => inputRef.current?.focus()} aria-label="输入新点子">
+          <Note weight="fill" />
+        </button>
+        <label>
+          <span>写一张便利贴</span>
+          <textarea
+            ref={inputRef}
+            value={text}
+            onChange={(event) => setText(event.target.value.slice(0, 140))}
+            placeholder="输入一个想法，按 Ctrl + Enter 贴上画布"
+            rows={1}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+        </label>
+        <div className="color-picker" aria-label="便利贴颜色">
+          {COLORS.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={`${item} ${color === item ? "active" : ""}`}
+              onClick={() => setColor(item)}
+              aria-label={`选择${item}色`}
+              aria-pressed={color === item}
+            />
+          ))}
+        </div>
+        <button className="submit-note" type="submit" disabled={!text.trim()}>
+          贴上去
+          <Plus weight="bold" />
+        </button>
+      </form>
+
+      <button className="tidy-button" onClick={tidyNotes}>
+        <Sparkle weight="fill" />
+        按热度整理
+      </button>
     </main>
   );
 }
