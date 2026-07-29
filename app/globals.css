@@ -46,48 +46,49 @@ button { color: inherit; }
   position: fixed;
   inset: 0 0 auto;
   z-index: 20;
-  height: 66px;
-  padding: 0 18px;
+  height: 56px;
+  padding: 0 16px;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 18px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
 }
 
 .brand-lockup, .participant, .board-title span { display: flex; align-items: center; }
 .brand-lockup { gap: 10px; }
 .brand-tile {
-  width: 34px;
-  height: 34px;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
-  color: #fffaf3;
-  background: var(--accent-deep);
-  border-radius: 4px;
+  color: var(--accent-deep);
+  background: transparent;
+  border-radius: 3px;
 }
-.brand-tile svg { width: 17px; height: 17px; }
+.brand-tile svg { width: 16px; height: 16px; }
 .brand-lockup div { display: grid; gap: 1px; }
 .brand-lockup strong { font-family: Georgia, "Songti SC", serif; font-size: 16px; font-weight: 600; }
-.brand-lockup div span { color: var(--muted); font-size: 10px; }
+.brand-lockup div span { display: none; }
 
-.board-title { display: grid; justify-items: center; gap: 3px; }
-.board-title strong { font-family: Georgia, "Songti SC", serif; font-size: 14px; font-weight: 500; }
+.board-title { display: grid; justify-items: center; gap: 2px; opacity: .78; }
+.board-title strong { font-family: Georgia, "Songti SC", serif; font-size: 12px; font-weight: 500; }
 .board-title span { gap: 5px; color: var(--muted); font-size: 10px; }
 .board-title svg { width: 13px; height: 13px; }
 
 .participant {
   justify-self: end;
   gap: 9px;
-  padding: 4px 7px 4px 4px;
-  border: 1px solid var(--line);
+  padding: 3px 5px 3px 3px;
+  border: 1px solid transparent;
   border-radius: 5px;
-  background: var(--canvas);
+  background: transparent;
 }
+.participant:hover, .participant:focus-within { border-color: var(--line); background: var(--canvas); }
 .avatar {
-  width: 31px;
-  height: 31px;
+  width: 27px;
+  height: 27px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -95,7 +96,7 @@ button { color: inherit; }
   background: var(--accent-deep);
   border-radius: 3px;
   font-family: Georgia, "Songti SC", serif;
-  font-size: 13px;
+  font-size: 12px;
 }
 .participant label { display: grid; gap: 0; }
 .participant label span { color: var(--muted); font-size: 8px; line-height: 1.2; }
@@ -162,20 +163,22 @@ button { color: inherit; }
 
 .canvas-viewport {
   position: fixed;
-  inset: 66px 0 0;
+  inset: 56px 0 0;
   overflow: auto;
   overscroll-behavior: none;
+  scrollbar-width: none;
 }
+.canvas-viewport::-webkit-scrollbar { display: none; }
 .canvas-viewport.pan-mode { cursor: grab; touch-action: none; }
 .canvas-viewport.pan-mode:active { cursor: grabbing; }
 
 .canvas {
   --zoom: 1;
   position: relative;
-  width: max(100%, 1080px);
-  height: max(100%, 760px);
+  width: 8000px;
+  height: 5600px;
   scale: var(--zoom);
-  transform-origin: 50% 42%;
+  transform-origin: 50% 50%;
   background-color: var(--canvas);
   background-image:
     linear-gradient(var(--grid) 1px, transparent 1px),
@@ -186,9 +189,9 @@ button { color: inherit; }
   content: "";
   position: absolute;
   left: 50%;
-  top: 12%;
-  width: min(820px, 74%);
-  height: 70%;
+  top: calc(50% - 410px);
+  width: 940px;
+  height: 820px;
   transform: translateX(-50%);
   border: 1px solid var(--line);
   pointer-events: none;
@@ -196,7 +199,7 @@ button { color: inherit; }
 .canvas-heading {
   position: absolute;
   left: 50%;
-  top: 7%;
+  top: calc(50% - 455px);
   z-index: 3;
   width: 390px;
   transform: translateX(-50%);
@@ -225,8 +228,8 @@ button { color: inherit; }
   --y: 20%;
   --tilt: 0deg;
   position: absolute;
-  left: var(--x);
-  top: var(--y);
+  left: calc(50% + var(--x));
+  top: calc(50% + var(--y));
   width: 218px;
   min-height: 196px;
   padding: 22px 19px 15px;
@@ -447,12 +450,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 }
 
 @media (max-width: 760px) {
-  .board-bar { height: 62px; padding: 0 9px; grid-template-columns: auto 1fr; }
+  .board-bar { height: 52px; padding: 0 9px; grid-template-columns: auto 1fr; }
   .brand-lockup div span, .board-title { display: none; }
   .participant { justify-self: end; }
   .participant label span { display: none; }
   .participant input { width: 108px; }
-  .canvas-viewport { inset: 62px 0 0; }
+  .canvas-viewport { inset: 52px 0 0; }
   .tool-rail { left: 7px; }
   .tool-rail button::after { display: none; }
   .idea-dock {
@@ -466,7 +469,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   .color-picker { display: none; }
   .submit-note { min-width: 43px; font-size: 0; }
   .zoom-control { display: none; }
-  .canvas { width: 1000px; height: 760px; }
+  .canvas { width: 6000px; height: 4400px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

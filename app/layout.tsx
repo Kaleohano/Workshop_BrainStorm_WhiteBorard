@@ -20,13 +20,13 @@ export const metadata: Metadata = {
     title: "灵光板｜打开就能一起想",
     description: "自由写便利贴、拖动想法，为好点子投票。",
     type: "website",
-    images: [{ url: "/og-v4.png", width: 1200, height: 630, alt: "明亮文具桌风格的灵光板与彩色便利贴" }],
+    images: [{ url: "/og-v5.png", width: 1200, height: 630, alt: "延伸到画面之外的灵光板与彩色便利贴" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "灵光板｜打开就能一起想",
     description: "自由写便利贴、拖动想法，为好点子投票。",
-    images: ["/og-v4.png"],
+    images: ["/og-v5.png"],
   },
   icons: {
     icon: "/favicon.svg",

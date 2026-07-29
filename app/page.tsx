@@ -41,8 +41,6 @@ type DragState = {
   startClientY: number;
   startX: number;
   startY: number;
-  width: number;
-  height: number;
 };
 
 type PanState = {
@@ -53,6 +51,7 @@ type PanState = {
 };
 
 const COLORS = ["butter", "rose", "blue", "green", "violet"];
+const NOTE_POSITION_SCALE = 12;
 
 const STARTER_NOTES: BoardNote[] = [
   {
@@ -168,6 +167,12 @@ export default function Home() {
     }
   }, [notes, hydrated]);
 
+  useEffect(() => {
+    if (!hydrated) return;
+    const frame = window.requestAnimationFrame(() => centerCanvas("auto"));
+    return () => window.cancelAnimationFrame(frame);
+  }, [hydrated]);
+
   function changeParticipant(value: string) {
     const name = value.slice(0, 14);
     setParticipant(name);
@@ -228,8 +233,6 @@ export default function Home() {
   function startDrag(event: ReactPointerEvent<HTMLElement>, note: BoardNote) {
     if (tool !== "select") return;
     if ((event.target as HTMLElement).closest("button")) return;
-    const canvas = event.currentTarget.parentElement;
-    if (!canvas) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
       id: note.id,
@@ -238,8 +241,6 @@ export default function Home() {
       startClientY: event.clientY,
       startX: note.x,
       startY: note.y,
-      width: canvas.clientWidth,
-      height: canvas.clientHeight,
     };
   }
 
@@ -273,25 +274,38 @@ export default function Home() {
     inputRef.current?.focus();
   }
 
+  function centerCanvas(behavior: ScrollBehavior = "smooth") {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewport.scrollTo({
+      left: (viewport.scrollWidth - viewport.clientWidth) / 2,
+      top: (viewport.scrollHeight - viewport.clientHeight) / 2,
+      behavior,
+    });
+  }
+
   function resetView() {
     setZoom(100);
-    viewportRef.current?.scrollTo({ left: 0, top: 0, behavior: "smooth" });
+    centerCanvas();
   }
 
   function moveNote(event: ReactPointerEvent<HTMLElement>) {
     const drag = dragRef.current;
     if (!drag || drag.id !== event.currentTarget.dataset.noteId) return;
-    const x = Math.max(1, Math.min(84, drag.startX + ((event.clientX - drag.startClientX) / drag.width) * 100));
-    const y = Math.max(4, Math.min(78, drag.startY + ((event.clientY - drag.startClientY) / drag.height) * 100));
-    drag.element.style.setProperty("--x", `${x}%`);
-    drag.element.style.setProperty("--y", `${y}%`);
+    const scale = NOTE_POSITION_SCALE * (zoom / 100);
+    const x = drag.startX + (event.clientX - drag.startClientX) / scale;
+    const y = drag.startY + (event.clientY - drag.startClientY) / scale;
+    drag.element.style.setProperty("--x", `${(x - 50) * NOTE_POSITION_SCALE}px`);
+    drag.element.style.setProperty("--y", `${(y - 50) * NOTE_POSITION_SCALE}px`);
   }
 
   function endDrag(event: ReactPointerEvent<HTMLElement>) {
     const drag = dragRef.current;
     if (!drag || drag.id !== event.currentTarget.dataset.noteId) return;
-    const x = Number.parseFloat(drag.element.style.getPropertyValue("--x"));
-    const y = Number.parseFloat(drag.element.style.getPropertyValue("--y"));
+    const xOffset = Number.parseFloat(drag.element.style.getPropertyValue("--x"));
+    const yOffset = Number.parseFloat(drag.element.style.getPropertyValue("--y"));
+    const x = xOffset / NOTE_POSITION_SCALE + 50;
+    const y = yOffset / NOTE_POSITION_SCALE + 50;
     setNotes((current) =>
       current.map((note) =>
         note.id === drag.id
@@ -388,8 +402,8 @@ export default function Home() {
               data-note-id={note.id}
               key={note.id}
               style={{
-                "--x": `${note.x}%`,
-                "--y": `${note.y}%`,
+                "--x": `${(note.x - 50) * NOTE_POSITION_SCALE}px`,
+                "--y": `${(note.y - 50) * NOTE_POSITION_SCALE}px`,
                 "--tilt": `${note.tilt}deg`,
               } as React.CSSProperties}
               onPointerDown={(event) => startDrag(event, note)}
