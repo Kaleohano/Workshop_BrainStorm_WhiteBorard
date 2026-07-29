@@ -1,5 +1,8 @@
+import { DurableObject } from "cloudflare:workers";
+
 interface Env {
   DB: D1Database;
+  BOARD_ROOM: DurableObjectNamespace<BoardRoom>;
 }
 
 type BoardNote = {
@@ -30,6 +33,11 @@ type BoardAction =
   | { type: "tidy-notes"; positions: Array<Pick<BoardNote, "id" | "x" | "y" | "tilt">> }
   | { type: "reset-board"; boardTitle: string }
   | { type: "increment-visitor" };
+
+type ActionEnvelope = {
+  operationId: string;
+  action: BoardAction;
+};
 
 const BOARD_ID = "shared";
 const MAX_ACTION_BYTES = 32_000;
@@ -101,70 +109,174 @@ function applyAction(board: BoardState, action: BoardAction): BoardState {
   }
 }
 
-async function mutateBoard(db: D1Database, action: BoardAction) {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const row = await db
+export class BoardRoom extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.ctx.blockConcurrencyWhile(async () => {
+      this.ctx.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS board (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+    });
+  }
+
+  private async getBoard() {
+    const stored = this.ctx.storage.sql
+      .exec<{ payload: string; updated_at: number }>(
+        "SELECT payload, updated_at FROM board WHERE id = ?",
+        BOARD_ID,
+      )
+      .toArray()[0];
+
+    if (stored) {
+      return {
+        board: JSON.parse(stored.payload) as BoardState,
+        updatedAt: stored.updated_at,
+      };
+    }
+
+    const row = await this.env.DB
       .prepare("SELECT payload, updated_at AS updatedAt FROM board_state WHERE id = ?")
       .bind(BOARD_ID)
       .first<{ payload: string; updatedAt: number }>();
-
     if (!row) throw new Error("Shared board has not been initialized");
-    const board = JSON.parse(row.payload) as BoardState;
-    const nextBoard = applyAction(board, action);
-    const updatedAt = Math.max(Date.now(), row.updatedAt + 1);
-    const result = await db
-      .prepare(
-        `UPDATE board_state
-         SET payload = ?, updated_at = ?
-         WHERE id = ? AND updated_at = ?`,
-      )
-      .bind(JSON.stringify(nextBoard), updatedAt, BOARD_ID, row.updatedAt)
-      .run();
 
-    if ((result.meta.changes || 0) === 1) {
-      return { board: nextBoard, updatedAt };
+    this.ctx.storage.sql.exec(
+      "INSERT INTO board (id, payload, updated_at) VALUES (?, ?, ?)",
+      BOARD_ID,
+      row.payload,
+      row.updatedAt,
+    );
+    return { board: JSON.parse(row.payload) as BoardState, updatedAt: row.updatedAt };
+  }
+
+  private async mutate(action: BoardAction) {
+    const current = await this.getBoard();
+    const board = applyAction(current.board, action);
+    const updatedAt = Math.max(Date.now(), current.updatedAt + 1);
+    const payload = JSON.stringify(board);
+
+    this.ctx.storage.sql.exec(
+      `INSERT INTO board (id, payload, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         payload = excluded.payload,
+         updated_at = excluded.updated_at`,
+      BOARD_ID,
+      payload,
+      updatedAt,
+    );
+    await this.env.DB
+      .prepare(
+        `INSERT INTO board_state (id, payload, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           payload = excluded.payload,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(BOARD_ID, payload, updatedAt)
+      .run();
+    return { board, updatedAt };
+  }
+
+  private broadcast(message: string) {
+    for (const socket of this.ctx.getWebSockets()) {
+      try {
+        socket.send(message);
+      } catch {
+        socket.close(1011, "Unable to deliver update");
+      }
     }
   }
-  throw new Error("Board was busy; please retry");
+
+  async fetch(request: Request): Promise<Response> {
+    if (request.headers.get("Upgrade") === "websocket") {
+      const snapshot = await this.getBoard();
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      this.ctx.acceptWebSocket(server);
+      server.send(JSON.stringify({ type: "snapshot", ...snapshot }));
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    if (request.method === "GET") {
+      return Response.json(await this.getBoard(), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (request.method === "POST") {
+      const action = (await request.json()) as BoardAction;
+      return Response.json(await this.mutate(action));
+    }
+    return Response.json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
+    try {
+      const raw = typeof message === "string" ? message : new TextDecoder().decode(message);
+      if (new TextEncoder().encode(raw).byteLength > MAX_ACTION_BYTES) {
+        socket.close(1009, "Message too large");
+        return;
+      }
+      const envelope = JSON.parse(raw) as ActionEnvelope;
+      if (!envelope.operationId || !envelope.action?.type) {
+        throw new Error("Invalid action envelope");
+      }
+      const result = await this.mutate(envelope.action);
+      this.broadcast(
+        JSON.stringify({
+          type: "action",
+          operationId: envelope.operationId,
+          action: envelope.action,
+          updatedAt: result.updatedAt,
+        }),
+      );
+    } catch {
+      socket.send(JSON.stringify({ type: "error", message: "Unable to apply action" }));
+    }
+  }
+
+  async webSocketClose(
+    socket: WebSocket,
+    code: number,
+    reason: string,
+    _wasClean: boolean,
+  ) {
+    socket.close(code, reason);
+  }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const headers = corsHeaders(request);
-
-    if (url.pathname !== "/api/board") {
+    if (url.pathname !== "/api/board" && url.pathname !== "/api/board/live") {
       return Response.json({ error: "Not found" }, { status: 404, headers });
     }
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers });
     }
-    if (request.method === "GET") {
-      const row = await env.DB
-        .prepare("SELECT payload, updated_at AS updatedAt FROM board_state WHERE id = ?")
-        .bind(BOARD_ID)
-        .first<{ payload: string; updatedAt: number }>();
-      return Response.json(
-        row
-          ? { board: JSON.parse(row.payload), updatedAt: row.updatedAt }
-          : { board: null, updatedAt: 0 },
-        { headers },
-      );
+    if (
+      url.pathname === "/api/board/live" &&
+      request.headers.get("Upgrade") !== "websocket"
+    ) {
+      return Response.json({ error: "WebSocket upgrade required" }, { status: 426, headers });
     }
-    if (request.method === "POST") {
-      const rawPayload = await request.text();
-      if (!rawPayload || new TextEncoder().encode(rawPayload).byteLength > MAX_ACTION_BYTES) {
-        return Response.json({ error: "Invalid action payload" }, { status: 400, headers });
-      }
-      try {
-        const action = JSON.parse(rawPayload) as BoardAction;
-        if (!action?.type) throw new Error("Missing action type");
-        return Response.json(await mutateBoard(env.DB, action), { headers });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Invalid action";
-        return Response.json({ error: message }, { status: 409, headers });
-      }
+
+    const room = env.BOARD_ROOM.getByName(BOARD_ID);
+    if (url.pathname === "/api/board/live") {
+      return room.fetch(request);
     }
-    return Response.json({ error: "Method not allowed" }, { status: 405, headers });
+    const response = await room.fetch(request);
+    const responseHeaders = new Headers(response.headers);
+    for (const [key, value] of Object.entries(headers)) responseHeaders.set(key, value);
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
   },
 };

@@ -87,6 +87,8 @@ const SHARED_BOARD_URLS = [
   "https://inspiration-capsule-board-api.pages.dev/api/board",
   "https://inspiration-capsule-shared-board.inspiration-capsule.workers.dev/api/board",
 ];
+const SHARED_BOARD_SOCKET_URL =
+  "wss://inspiration-capsule-shared-board.inspiration-capsule.workers.dev/api/board/live";
 
 const STARTER_NOTES: BoardNote[] = [
   {
@@ -207,6 +209,10 @@ export default function Home() {
   const savedViewRef = useRef<{ scrollLeft: number; scrollTop: number } | null>(null);
   const scrollSaveFrameRef = useRef<number | null>(null);
   const latestRevisionRef = useRef(0);
+  const socketRef = useRef<WebSocket | null>(null);
+  const processedOperationsRef = useRef(new Set<string>());
+  const titleInputFocusedRef = useRef(false);
+  const visitorCountedRef = useRef(false);
 
   useEffect(() => {
     const savedBoard = window.localStorage.getItem(BOARD_STORAGE_KEY);
@@ -316,6 +322,9 @@ export default function Home() {
   useEffect(() => {
     if (!hydrated) return;
     const controller = new AbortController();
+    let pollTimer: number | null = null;
+    let reconnectTimer: number | null = null;
+    let stopped = false;
 
     function applySharedBoard(
       board: Partial<SharedBoardState> | null | undefined,
@@ -326,13 +335,68 @@ export default function Home() {
       const title = board.boardTitle?.trim() || DEFAULT_BOARD_TITLE;
       setNotes(migrateNotes(board.notes));
       setBoardTitle(title);
-      setTitleDraft((current) => (current === boardTitle ? title : current));
+      if (!titleInputFocusedRef.current) setTitleDraft(title);
       setVisitorCount(
         typeof board.visitorCount === "number" ? board.visitorCount : 0,
       );
     }
 
-    async function loadSharedBoard(incrementVisitor = false) {
+    function applyRemoteAction(action: BoardAction, updatedAt: number) {
+      if (updatedAt <= latestRevisionRef.current) return;
+      latestRevisionRef.current = updatedAt;
+      switch (action.type) {
+        case "add-note":
+          setNotes((current) =>
+            current.some((note) => note.id === action.note.id)
+              ? current
+              : [...current, action.note],
+          );
+          break;
+        case "delete-note":
+          setNotes((current) => current.filter((note) => note.id !== action.id));
+          break;
+        case "move-note":
+          setNotes((current) =>
+            current.map((note) =>
+              note.id === action.id ? { ...note, x: action.x, y: action.y } : note,
+            ),
+          );
+          break;
+        case "toggle-like":
+          setNotes((current) =>
+            current.map((note) =>
+              note.id === action.id
+                ? {
+                    ...note,
+                    likes: Math.max(0, note.likes + action.delta),
+                    liked: action.liked,
+                  }
+                : note,
+            ),
+          );
+          break;
+        case "tidy-notes": {
+          const positions = new Map(
+            action.positions.map((position) => [position.id, position]),
+          );
+          setNotes((current) =>
+            current.map((note) => ({ ...note, ...positions.get(note.id) })),
+          );
+          break;
+        }
+        case "reset-board":
+          setNotes([]);
+          setBoardTitle(action.boardTitle);
+          if (!titleInputFocusedRef.current) setTitleDraft(action.boardTitle);
+          setVisitorCount(0);
+          break;
+        case "increment-visitor":
+          setVisitorCount((current) => current + 1);
+          break;
+      }
+    }
+
+    async function loadSharedBoard() {
       try {
         const response = await requestSharedBoard({
           cache: "no-store",
@@ -345,18 +409,77 @@ export default function Home() {
         };
         applySharedBoard(result.board, result.updatedAt || 0);
         setCloudReady(true);
-        if (incrementVisitor) void sendBoardAction({ type: "increment-visitor" });
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         console.warn("共享白板暂时无法连接，已继续使用本地内容。");
       }
     }
 
-    void loadSharedBoard(true);
-    const poll = window.setInterval(() => void loadSharedBoard(), 1500);
+    function schedulePoll() {
+      if (stopped) return;
+      const delay = socketRef.current?.readyState === WebSocket.OPEN ? 15_000 : 2_000;
+      pollTimer = window.setTimeout(async () => {
+        await loadSharedBoard();
+        schedulePoll();
+      }, delay);
+    }
+
+    function connectSocket() {
+      if (stopped) return;
+      const socket = new WebSocket(SHARED_BOARD_SOCKET_URL);
+      socketRef.current = socket;
+      socket.addEventListener("open", () => {
+        if (!visitorCountedRef.current) {
+          visitorCountedRef.current = true;
+          void sendBoardAction({ type: "increment-visitor" });
+        }
+      });
+      socket.addEventListener("message", (event) => {
+        try {
+          const message = JSON.parse(event.data) as {
+            type: "snapshot" | "action" | "error";
+            board?: SharedBoardState;
+            updatedAt?: number;
+            operationId?: string;
+            action?: BoardAction;
+          };
+          if (message.type === "snapshot") {
+            applySharedBoard(message.board, message.updatedAt || 0);
+          } else if (
+            message.type === "action" &&
+            message.action &&
+            message.operationId
+          ) {
+            if (processedOperationsRef.current.delete(message.operationId)) {
+              latestRevisionRef.current = Math.max(
+                latestRevisionRef.current,
+                message.updatedAt || 0,
+              );
+            } else {
+              applyRemoteAction(message.action, message.updatedAt || 0);
+            }
+          }
+        } catch {
+          // A malformed real-time message is ignored; polling remains as a safety net.
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (socketRef.current === socket) socketRef.current = null;
+        if (!stopped) reconnectTimer = window.setTimeout(connectSocket, 1500);
+      });
+      socket.addEventListener("error", () => socket.close());
+    }
+
+    void loadSharedBoard();
+    connectSocket();
+    schedulePoll();
     return () => {
+      stopped = true;
       controller.abort();
-      window.clearInterval(poll);
+      if (pollTimer !== null) window.clearTimeout(pollTimer);
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socketRef.current?.close();
+      socketRef.current = null;
     };
   }, [hydrated]);
 
@@ -376,6 +499,13 @@ export default function Home() {
   }
 
   async function sendBoardAction(action: BoardAction) {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      const operationId = crypto.randomUUID();
+      processedOperationsRef.current.add(operationId);
+      socket.send(JSON.stringify({ operationId, action }));
+      return;
+    }
     try {
       const response = await requestSharedBoard({
         method: "POST",
@@ -632,7 +762,13 @@ export default function Home() {
             value={titleDraft}
             maxLength={32}
             onChange={(event) => setTitleDraft(event.target.value)}
-            onBlur={requestBoardTitleChange}
+            onFocus={() => {
+              titleInputFocusedRef.current = true;
+            }}
+            onBlur={() => {
+              titleInputFocusedRef.current = false;
+              requestBoardTitleChange();
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter") event.currentTarget.blur();
               if (event.key === "Escape") {
