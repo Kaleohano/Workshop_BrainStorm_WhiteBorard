@@ -63,10 +63,19 @@ type BoardSnapshot = {
   scrollTop: number;
 };
 
+type SharedBoardState = {
+  version: 1;
+  notes: BoardNote[];
+  boardTitle: string;
+  visitorCount: number;
+};
+
 const COLORS = ["butter", "rose", "blue", "green", "violet"];
 const NOTE_POSITION_SCALE = 12;
 const DEFAULT_BOARD_TITLE = "下一个值得尝试的点子是什么？";
 const BOARD_STORAGE_KEY = "inspiration-capsule-board";
+const SHARED_BOARD_URL =
+  "https://sparkboard-ideas.itskaleohano.chatgpt.site/api/board";
 
 const STARTER_NOTES: BoardNote[] = [
   {
@@ -128,6 +137,12 @@ function makeName() {
   }`;
 }
 
+function getSharedBoardUrl() {
+  return ["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? "/api/board"
+    : SHARED_BOARD_URL;
+}
+
 function migrateNotes(value: unknown): BoardNote[] {
   if (!Array.isArray(value)) return STARTER_NOTES;
   return value.map((item, index) => {
@@ -159,6 +174,7 @@ export default function Home() {
   const [zoom, setZoom] = useState(100);
   const [tool, setTool] = useState<"select" | "pan">("select");
   const [hydrated, setHydrated] = useState(false);
+  const [cloudReady, setCloudReady] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const viewportRef = useRef<HTMLElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -270,6 +286,66 @@ export default function Home() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const controller = new AbortController();
+
+    async function loadSharedBoard() {
+      try {
+        const response = await fetch(getSharedBoardUrl(), {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Unable to load shared board");
+        const result = (await response.json()) as {
+          board?: Partial<SharedBoardState> | null;
+        };
+
+        if (result.board) {
+          const title = result.board.boardTitle?.trim() || DEFAULT_BOARD_TITLE;
+          setNotes(migrateNotes(result.board.notes));
+          setBoardTitle(title);
+          setTitleDraft(title);
+          setVisitorCount(
+            typeof result.board.visitorCount === "number"
+              ? result.board.visitorCount + 1
+              : 1,
+          );
+        }
+        setCloudReady(true);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.warn("共享白板暂时无法连接，已继续使用本地内容。");
+      }
+    }
+
+    loadSharedBoard();
+    return () => controller.abort();
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!cloudReady) return;
+    const timer = window.setTimeout(async () => {
+      const sharedBoard: SharedBoardState = {
+        version: 1,
+        notes,
+        boardTitle,
+        visitorCount,
+      };
+      try {
+        await fetch(getSharedBoardUrl(), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sharedBoard),
+        });
+      } catch {
+        console.warn("共享白板暂时保存失败，本地内容仍已保留。");
+      }
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [notes, boardTitle, visitorCount, cloudReady]);
 
   useEffect(() => {
     if (!hydrated) return;
