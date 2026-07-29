@@ -75,7 +75,7 @@ const NOTE_POSITION_SCALE = 12;
 const DEFAULT_BOARD_TITLE = "下一个值得尝试的点子是什么？";
 const BOARD_STORAGE_KEY = "inspiration-capsule-board";
 const SHARED_BOARD_URL =
-  "https://sparkboard-ideas.itskaleohano.chatgpt.site/api/board";
+  "https://inspiration-capsule-shared-board.inspiration-capsule.workers.dev/api/board";
 
 const STARTER_NOTES: BoardNote[] = [
   {

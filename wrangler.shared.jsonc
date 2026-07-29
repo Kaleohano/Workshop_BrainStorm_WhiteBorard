@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "inspiration-capsule-shared-board",
+  "main": "worker/shared-board.ts",
+  "compatibility_date": "2026-07-29",
+  "workers_dev": true,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "inspiration-capsule-board",
+      "database_id": "09682cb5-b09b-4b87-a647-bf59f12dc5a5"
+    }
+  ]
+}
