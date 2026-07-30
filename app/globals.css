@@ -226,6 +226,11 @@ button { color: inherit; }
 .canvas-viewport::-webkit-scrollbar { display: none; }
 .canvas-viewport.pan-mode { cursor: grab; touch-action: none; }
 .canvas-viewport.pan-mode:active { cursor: grabbing; }
+.canvas-viewport.pan-mode .sticky-note { cursor: grab; }
+.canvas-viewport.pan-mode .sticky-note:active {
+  transform: rotate(var(--tilt));
+  box-shadow: 0 10px 24px rgba(55, 70, 100, .11), inset 0 1px rgba(255,255,255,.52);
+}
 
 .canvas {
   --zoom: 1;

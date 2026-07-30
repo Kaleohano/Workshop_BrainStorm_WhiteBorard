@@ -199,6 +199,7 @@ export default function Home() {
   const [color, setColor] = useState(COLORS[0]);
   const [zoom, setZoom] = useState(100);
   const [tool, setTool] = useState<"select" | "pan">("select");
+  const [spacePressed, setSpacePressed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [cloudReady, setCloudReady] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -212,6 +213,7 @@ export default function Home() {
   const processedOperationsRef = useRef(new Set<string>());
   const titleInputFocusedRef = useRef(false);
   const visitorCountedRef = useRef(false);
+  const effectiveTool = spacePressed ? "pan" : tool;
 
   useEffect(() => {
     const savedBoard = window.localStorage.getItem(BOARD_STORAGE_KEY);
@@ -499,6 +501,37 @@ export default function Home() {
     return () => window.removeEventListener("pagehide", saveBeforeLeaving);
   }, [hydrated, cloudReady]);
 
+  useEffect(() => {
+    const isEditingText = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null;
+      return Boolean(
+        element?.isContentEditable ||
+          element?.matches("input, textarea, select"),
+      );
+    };
+    const pressSpace = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || isEditingText(event.target)) return;
+      event.preventDefault();
+      dragRef.current = null;
+      setSpacePressed(true);
+    };
+    const releaseSpace = (event: KeyboardEvent) => {
+      if (event.code !== "Space") return;
+      if (!isEditingText(event.target)) event.preventDefault();
+      setSpacePressed(false);
+    };
+    const releaseOnBlur = () => setSpacePressed(false);
+
+    window.addEventListener("keydown", pressSpace);
+    window.addEventListener("keyup", releaseSpace);
+    window.addEventListener("blur", releaseOnBlur);
+    return () => {
+      window.removeEventListener("keydown", pressSpace);
+      window.removeEventListener("keyup", releaseSpace);
+      window.removeEventListener("blur", releaseOnBlur);
+    };
+  }, []);
+
   async function sendBoardAction(action: BoardAction) {
     const operationId = crypto.randomUUID();
     const socket = socketRef.current;
@@ -621,7 +654,7 @@ export default function Home() {
   }
 
   function startDrag(event: ReactPointerEvent<HTMLElement>, note: BoardNote) {
-    if (tool !== "select") return;
+    if (effectiveTool !== "select") return;
     if ((event.target as HTMLElement).closest("button")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
@@ -635,7 +668,7 @@ export default function Home() {
   }
 
   function startPan(event: ReactPointerEvent<HTMLElement>) {
-    if (tool !== "pan") return;
+    if (effectiveTool !== "pan") return;
     const viewport = viewportRef.current;
     if (!viewport) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -712,7 +745,11 @@ export default function Home() {
 
   function moveNote(event: ReactPointerEvent<HTMLElement>) {
     const drag = dragRef.current;
-    if (!drag || drag.id !== event.currentTarget.dataset.noteId) return;
+    if (
+      effectiveTool !== "select" ||
+      !drag ||
+      drag.id !== event.currentTarget.dataset.noteId
+    ) return;
     const scale = NOTE_POSITION_SCALE * (zoom / 100);
     const x = drag.startX + (event.clientX - drag.startClientX) / scale;
     const y = drag.startY + (event.clientY - drag.startClientY) / scale;
@@ -789,22 +826,22 @@ export default function Home() {
 
       <aside className="tool-rail" aria-label="白板工具">
         <button
-          className={tool === "select" ? "selected" : ""}
+          className={effectiveTool === "select" ? "selected" : ""}
           aria-label="选择与拖动便利贴"
-          aria-pressed={tool === "select"}
+          aria-pressed={effectiveTool === "select"}
           data-label="选择"
           onClick={() => setTool("select")}
         >
-          <CursorClick weight={tool === "select" ? "fill" : "regular"} />
+          <CursorClick weight={effectiveTool === "select" ? "fill" : "regular"} />
         </button>
         <button
-          className={tool === "pan" ? "selected" : ""}
+          className={effectiveTool === "pan" ? "selected" : ""}
           aria-label="拖动画布"
-          aria-pressed={tool === "pan"}
+          aria-pressed={effectiveTool === "pan"}
           data-label="抓手"
           onClick={() => setTool("pan")}
         >
-          <HandGrabbing weight={tool === "pan" ? "fill" : "regular"} />
+          <HandGrabbing weight={effectiveTool === "pan" ? "fill" : "regular"} />
         </button>
         <span />
         <button aria-label="新建便利贴" data-label="便利贴" onClick={focusComposer}>
@@ -820,7 +857,7 @@ export default function Home() {
 
       <section
         ref={viewportRef}
-        className={`canvas-viewport ${tool === "pan" ? "pan-mode" : ""}`}
+        className={`canvas-viewport ${effectiveTool === "pan" ? "pan-mode" : ""}`}
         aria-label="自由脑暴白板"
         onPointerDown={startPan}
         onPointerMove={moveCanvas}
