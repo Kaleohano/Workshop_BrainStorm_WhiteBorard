@@ -226,6 +226,7 @@ export default function Home() {
   const panRef = useRef<PanState | null>(null);
   const savedViewRef = useRef<{ scrollLeft: number; scrollTop: number } | null>(null);
   const scrollSaveFrameRef = useRef<number | null>(null);
+  const lastTouchLikeRef = useRef(0);
   const latestRevisionRef = useRef(0);
   const socketRef = useRef<WebSocket | null>(null);
   const voterIdRef = useRef("");
@@ -1105,10 +1106,21 @@ export default function Home() {
               <footer>
                 <button
                   className={note.liked ? "liked" : ""}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onPointerUp={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    if (event.pointerType !== "mouse") event.preventDefault();
+                  }}
+                  onPointerUp={(event) => {
+                    event.stopPropagation();
+                    if (event.pointerType !== "mouse") {
+                      event.preventDefault();
+                      lastTouchLikeRef.current = Date.now();
+                      toggleLike(note.id);
+                    }
+                  }}
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (Date.now() - lastTouchLikeRef.current < 700) return;
                     toggleLike(note.id);
                   }}
                   aria-label={`${note.liked ? "取消点赞" : "点赞"}，当前 ${note.likes} 票`}
