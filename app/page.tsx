@@ -590,10 +590,10 @@ export default function Home() {
     };
   }, []);
 
-  async function sendBoardAction(action: BoardAction) {
+  async function sendBoardAction(action: BoardAction, preferHttp = false) {
     const operationId = crypto.randomUUID();
     const socket = socketRef.current;
-    if (socket?.readyState === WebSocket.OPEN) {
+    if (!preferHttp && socket?.readyState === WebSocket.OPEN) {
       processedOperationsRef.current.add(operationId);
       socket.send(JSON.stringify({ operationId, action }));
       return;
@@ -635,7 +635,7 @@ export default function Home() {
     setVisitorCount(0);
     setPendingTitle(null);
     latestRevisionRef.current += 1;
-    void sendBoardAction({ type: "reset-board", boardTitle: nextTitle });
+    void sendBoardAction({ type: "reset-board", boardTitle: nextTitle }, true);
     window.localStorage.setItem("sparkboard-title", nextTitle);
     window.localStorage.setItem("sparkboard-visitors", "0");
     centerCanvas();
@@ -983,26 +983,41 @@ export default function Home() {
         </div>
 
         <div className="board-title">
-          <input
-            aria-label="脑暴主题"
-            value={titleDraft}
-            maxLength={32}
-            onChange={(event) => setTitleDraft(event.target.value)}
-            onFocus={() => {
-              titleInputFocusedRef.current = true;
-            }}
-            onBlur={() => {
-              titleInputFocusedRef.current = false;
-              requestBoardTitleChange();
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-              if (event.key === "Escape") {
-                setTitleDraft(boardTitle);
-                event.currentTarget.blur();
-              }
-            }}
-          />
+          <div className="board-title-editor">
+            <input
+              aria-label="脑暴主题"
+              value={titleDraft}
+              maxLength={32}
+              onChange={(event) => setTitleDraft(event.target.value)}
+              onFocus={() => {
+                titleInputFocusedRef.current = true;
+              }}
+              onBlur={() => {
+                titleInputFocusedRef.current = false;
+                requestBoardTitleChange();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  requestBoardTitleChange();
+                }
+                if (event.key === "Escape") {
+                  setTitleDraft(boardTitle);
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+            {titleDraft.trim() !== boardTitle && (
+              <button
+                type="button"
+                className="board-title-save"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={requestBoardTitleChange}
+              >
+                更改
+              </button>
+            )}
+          </div>
           <span><UsersThree /> {visitorCount} 人来过</span>
         </div>
 

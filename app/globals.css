@@ -75,6 +75,11 @@ button { color: inherit; }
 }
 
 .board-title { display: grid; justify-items: center; gap: 2px; }
+.board-title-editor {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
 .board-title input {
   width: min(430px, 38vw);
   padding: 3px 24px;
@@ -89,6 +94,21 @@ button { color: inherit; }
   text-align: center;
   transition: background 160ms ease, box-shadow 160ms ease;
 }
+.board-title-save {
+  position: absolute;
+  right: 5px;
+  min-height: 27px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: var(--accent);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 760;
+}
+.board-title-save:hover { background: var(--accent-deep); }
+.board-title-save:active { transform: scale(.96); }
 .board-title input:hover { background: rgba(236, 242, 252, .7); }
 .board-title input:focus {
   background: #fff;
@@ -690,7 +710,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   .brand-lockup div span { display: none; }
   .brand-lockup strong { font-size: 13px; }
   .board-title { grid-column: 1 / -1; width: 100%; }
-  .board-title input { width: min(420px, 88vw); padding: 2px 10px; font-size: 11px; }
+  .board-title input { width: min(420px, 88vw); padding: 2px 48px 2px 10px; font-size: 11px; }
   .board-title span { display: none; }
   .participant { justify-self: end; }
   .participant-copy span { display: none; }
