@@ -454,6 +454,14 @@ export default function Home() {
                 latestRevisionRef.current,
                 message.updatedAt || 0,
               );
+              const confirmedAction = message.action;
+              if (confirmedAction.type === "add-note") {
+                setNotes((current) =>
+                  current.map((note) =>
+                    note.id === confirmedAction.note.id ? confirmedAction.note : note,
+                  ),
+                );
+              }
             } else {
               applyRemoteAction(message.action, message.updatedAt || 0);
             }

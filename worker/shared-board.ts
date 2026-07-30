@@ -40,6 +40,7 @@ type ActionEnvelope = {
 };
 
 const BOARD_ID = "shared";
+const ROOM_ID = "shared-layout-v4";
 const MAX_ACTION_BYTES = 32_000;
 const ALLOWED_ORIGINS = new Set([
   "https://kaleohano.github.io",
@@ -57,6 +58,40 @@ function corsHeaders(request: Request) {
     "Access-Control-Allow-Headers": "Content-Type",
     "Cache-Control": "no-store",
     Vary: "Origin",
+  };
+}
+
+function placeNoteWithoutOverlap(notes: BoardNote[], note: BoardNote): BoardNote {
+  const overlaps = (x: number, y: number) =>
+    notes.some(
+      (existing) =>
+        Math.abs(existing.x - x) < 18 && Math.abs(existing.y - y) < 17,
+    );
+
+  if (!overlaps(note.x, note.y)) return note;
+
+  const stepX = 20;
+  const stepY = 19;
+  for (let ring = 1; ring <= 30; ring += 1) {
+    for (let offset = -ring; offset <= ring; offset += 1) {
+      const candidates = [
+        { x: note.x + offset * stepX, y: note.y - ring * stepY },
+        { x: note.x + ring * stepX, y: note.y + offset * stepY },
+        { x: note.x + offset * stepX, y: note.y + ring * stepY },
+        { x: note.x - ring * stepX, y: note.y + offset * stepY },
+      ];
+      const available = candidates.find(({ x, y }) => !overlaps(x, y));
+      if (available) return { ...note, ...available };
+    }
+  }
+  return note;
+}
+
+function normalizeAction(board: BoardState, action: BoardAction): BoardAction {
+  if (action.type !== "add-note") return action;
+  return {
+    ...action,
+    note: placeNoteWithoutOverlap(board.notes, action.note),
   };
 }
 
@@ -111,6 +146,7 @@ function applyAction(board: BoardState, action: BoardAction): BoardState {
 
 export class BoardRoom extends DurableObject<Env> {
   private operationQueue: Promise<void> = Promise.resolve();
+  private initialization: Promise<void> | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -120,12 +156,20 @@ export class BoardRoom extends DurableObject<Env> {
           id TEXT PRIMARY KEY,
           payload TEXT NOT NULL,
           updated_at INTEGER NOT NULL
-        )
+        );
+        CREATE TABLE IF NOT EXISTS note_additions (
+          sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+          id TEXT NOT NULL UNIQUE,
+          payload TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS note_tombstones (
+          id TEXT PRIMARY KEY
+        );
       `);
     });
   }
 
-  private async getBoard() {
+  private readStoredBoard() {
     const stored = this.ctx.storage.sql
       .exec<{ payload: string; updated_at: number }>(
         "SELECT payload, updated_at FROM board WHERE id = ?",
@@ -133,31 +177,121 @@ export class BoardRoom extends DurableObject<Env> {
       )
       .toArray()[0];
 
-    if (stored) {
-      return {
-        board: JSON.parse(stored.payload) as BoardState,
-        updatedAt: stored.updated_at,
-      };
+    if (!stored) return null;
+    const board = JSON.parse(stored.payload) as BoardState;
+    const additions = this.ctx.storage.sql
+      .exec<{ id: string; payload: string }>(
+        "SELECT id, payload FROM note_additions ORDER BY sequence",
+      )
+      .toArray();
+    const tombstones = new Set(
+      this.ctx.storage.sql
+        .exec<{ id: string }>("SELECT id FROM note_tombstones")
+        .toArray()
+        .map((row) => row.id),
+    );
+    const additionIds = new Set(additions.map((row) => row.id));
+    const mergedNotes = board.notes.filter(
+      (note) => !additionIds.has(note.id) && !tombstones.has(note.id),
+    );
+    for (const row of additions) {
+      if (tombstones.has(row.id)) continue;
+      const note = JSON.parse(row.payload) as BoardNote;
+      mergedNotes.push(placeNoteWithoutOverlap(mergedNotes, note));
     }
 
-    const row = await this.env.DB
-      .prepare("SELECT payload, updated_at AS updatedAt FROM board_state WHERE id = ?")
-      .bind(BOARD_ID)
-      .first<{ payload: string; updatedAt: number }>();
-    if (!row) throw new Error("Shared board has not been initialized");
+    return {
+      board: { ...board, notes: mergedNotes },
+      updatedAt: stored.updated_at,
+    };
+  }
 
-    this.ctx.storage.sql.exec(
-      "INSERT INTO board (id, payload, updated_at) VALUES (?, ?, ?)",
-      BOARD_ID,
-      row.payload,
-      row.updatedAt,
-    );
-    return { board: JSON.parse(row.payload) as BoardState, updatedAt: row.updatedAt };
+  private async initializeBoard() {
+    if (!this.initialization) {
+      this.initialization = (async () => {
+        const row = await this.env.DB
+          .prepare("SELECT payload, updated_at AS updatedAt FROM board_state WHERE id = ?")
+          .bind(BOARD_ID)
+          .first<{ payload: string; updatedAt: number }>();
+        if (!row) throw new Error("Shared board has not been initialized");
+
+        this.ctx.storage.sql.exec(
+          `INSERT INTO board (id, payload, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(id) DO NOTHING`,
+          BOARD_ID,
+          row.payload,
+          row.updatedAt,
+        );
+      })();
+    }
+    await this.initialization;
+  }
+
+  private async getBoard() {
+    const stored = this.readStoredBoard();
+    if (stored) return stored;
+    await this.initializeBoard();
+    const initialized = this.readStoredBoard();
+    if (!initialized) throw new Error("Shared board initialization failed");
+    return initialized;
   }
 
   private async mutate(action: BoardAction) {
-    const current = await this.getBoard();
-    const board = applyAction(current.board, action);
+    if (action.type === "add-note") {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO note_additions (id, payload)
+         VALUES (?, ?)
+         ON CONFLICT(id) DO NOTHING`,
+        action.note.id,
+        JSON.stringify(action.note),
+      );
+    } else if (action.type === "delete-note") {
+      this.ctx.storage.sql.exec(
+        "INSERT INTO note_tombstones (id) VALUES (?) ON CONFLICT(id) DO NOTHING",
+        action.id,
+      );
+    } else if (action.type === "reset-board") {
+      this.ctx.storage.sql.exec("DELETE FROM note_additions; DELETE FROM note_tombstones;");
+    }
+
+    let current = this.readStoredBoard();
+    if (!current) {
+      await this.initializeBoard();
+      current = this.readStoredBoard();
+    }
+    if (!current) throw new Error("Shared board initialization failed");
+    const normalizedAction =
+      action.type === "add-note"
+        ? {
+            ...action,
+            note:
+              current.board.notes.find((note) => note.id === action.note.id) ||
+              action.note,
+          }
+        : normalizeAction(current.board, action);
+    const board =
+      action.type === "add-note"
+        ? current.board
+        : applyAction(current.board, normalizedAction);
+    const changedIds =
+      action.type === "add-note" ||
+      action.type === "move-note" ||
+      action.type === "toggle-like"
+        ? new Set([
+            action.type === "add-note" ? action.note.id : action.id,
+          ])
+        : action.type === "tidy-notes"
+          ? new Set(action.positions.map((position) => position.id))
+          : new Set<string>();
+    for (const note of board.notes) {
+      if (!changedIds.has(note.id)) continue;
+      this.ctx.storage.sql.exec(
+        "UPDATE note_additions SET payload = ? WHERE id = ?",
+        JSON.stringify(note),
+        note.id,
+      );
+    }
     const updatedAt = Math.max(Date.now(), current.updatedAt + 1);
     const payload = JSON.stringify(board);
 
@@ -172,7 +306,7 @@ export class BoardRoom extends DurableObject<Env> {
       updatedAt,
     );
     this.ctx.waitUntil(this.ctx.storage.setAlarm(Date.now() + 250));
-    return { board, updatedAt };
+    return { board, updatedAt, action: normalizedAction };
   }
 
   private broadcast(message: string) {
@@ -204,7 +338,7 @@ export class BoardRoom extends DurableObject<Env> {
         JSON.stringify({
           type: "action",
           operationId: envelope.operationId,
-          action: envelope.action,
+          action: result.action,
           updatedAt: result.updatedAt,
         }),
       );
@@ -291,7 +425,7 @@ export default {
       return Response.json({ error: "WebSocket upgrade required" }, { status: 426, headers });
     }
 
-    const room = env.BOARD_ROOM.getByName(BOARD_ID);
+    const room = env.BOARD_ROOM.getByName(ROOM_ID);
     if (url.pathname === "/api/board/live") {
       return room.fetch(request);
     }
