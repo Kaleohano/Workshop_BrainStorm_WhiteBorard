@@ -255,9 +255,10 @@ button { color: inherit; }
 
 .canvas {
   --zoom: 1;
+  --canvas-size: 50000px;
   position: relative;
-  width: 8000px;
-  height: 5600px;
+  width: var(--canvas-size);
+  height: var(--canvas-size);
   scale: var(--zoom);
   transform-origin: 50% 50%;
   background-color: var(--canvas);
@@ -733,7 +734,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   .color-picker { display: none; }
   .submit-note { min-width: 43px; font-size: 0; }
   .zoom-control { display: none; }
-  .canvas { width: 6000px; height: 4400px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

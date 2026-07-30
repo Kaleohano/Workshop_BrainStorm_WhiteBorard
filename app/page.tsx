@@ -62,6 +62,7 @@ type BoardSnapshot = {
   zoom: number;
   scrollLeft: number;
   scrollTop: number;
+  canvasSize?: number;
 };
 
 type SharedBoardState = {
@@ -89,6 +90,7 @@ type BoardAction =
 
 const COLORS = ["butter", "rose", "blue", "green", "violet"];
 const NOTE_POSITION_SCALE = 12;
+const CANVAS_SIZE = 50_000;
 const DEFAULT_BOARD_TITLE = "下一个值得尝试的点子是什么？";
 const BOARD_STORAGE_KEY = "inspiration-capsule-board";
 const VOTER_STORAGE_KEY = "inspiration-capsule-voter-id";
@@ -268,11 +270,15 @@ export default function Home() {
             ? Math.min(130, Math.max(70, snapshot.zoom))
             : 100,
         );
-        savedViewRef.current = {
-          scrollLeft:
-            typeof snapshot.scrollLeft === "number" ? snapshot.scrollLeft : 0,
-          scrollTop: typeof snapshot.scrollTop === "number" ? snapshot.scrollTop : 0,
-        };
+        savedViewRef.current =
+          snapshot.canvasSize === CANVAS_SIZE
+            ? {
+                scrollLeft:
+                  typeof snapshot.scrollLeft === "number" ? snapshot.scrollLeft : 0,
+                scrollTop:
+                  typeof snapshot.scrollTop === "number" ? snapshot.scrollTop : 0,
+              }
+            : null;
         window.localStorage.setItem("sparkboard-participant", name);
         setHydrated(true);
         return;
@@ -317,6 +323,7 @@ export default function Home() {
       zoom,
       scrollLeft: viewport?.scrollLeft || 0,
       scrollTop: viewport?.scrollTop || 0,
+      canvasSize: CANVAS_SIZE,
     };
     window.localStorage.setItem(BOARD_STORAGE_KEY, JSON.stringify(snapshot));
     window.localStorage.setItem("sparkboard-notes", JSON.stringify(notes));
@@ -1083,7 +1090,15 @@ export default function Home() {
         onPointerCancel={endPan}
         onScroll={queueCurrentViewSave}
       >
-        <div className="canvas" style={{ "--zoom": zoom / 100 } as React.CSSProperties}>
+        <div
+          className="canvas"
+          style={
+            {
+              "--zoom": zoom / 100,
+              "--canvas-size": `${CANVAS_SIZE}px`,
+            } as React.CSSProperties
+          }
+        >
           {notes.map((note) => (
             <article
               className={`sticky-note ${note.color}`}
