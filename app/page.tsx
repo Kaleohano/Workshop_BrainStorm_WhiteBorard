@@ -1105,7 +1105,12 @@ export default function Home() {
               <footer>
                 <button
                   className={note.liked ? "liked" : ""}
-                  onClick={() => toggleLike(note.id)}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onPointerUp={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleLike(note.id);
+                  }}
                   aria-label={`${note.liked ? "取消点赞" : "点赞"}，当前 ${note.likes} 票`}
                   aria-pressed={note.liked}
                 >
