@@ -3,6 +3,7 @@
 import {
   ArrowsOut,
   CursorClick,
+  FilePdf,
   HandGrabbing,
   Heart,
   Minus,
@@ -200,6 +201,7 @@ export default function Home() {
   const [zoom, setZoom] = useState(100);
   const [tool, setTool] = useState<"select" | "pan">("select");
   const [spacePressed, setSpacePressed] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [cloudReady, setCloudReady] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -698,6 +700,128 @@ export default function Home() {
     inputRef.current?.focus();
   }
 
+  async function exportBoardAsPdf() {
+    if (exportingPdf) return;
+    setExportingPdf(true);
+    const exportRoot = document.createElement("div");
+    exportRoot.className = "pdf-export-root";
+    document.body.appendChild(exportRoot);
+
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const sortedNotes = [...notes].sort(
+        (left, right) =>
+          right.likes - left.likes ||
+          left.createdAt - right.createdAt,
+      );
+      const pageGroups: BoardNote[][] = [];
+      if (sortedNotes.length === 0) {
+        pageGroups.push([]);
+      } else {
+        let cursor = 0;
+        while (cursor < sortedNotes.length) {
+          const pageSize = cursor === 0 ? 4 : 5;
+          pageGroups.push(sortedNotes.slice(cursor, cursor + pageSize));
+          cursor += pageSize;
+        }
+      }
+
+      const pages = pageGroups.map((pageNotes, pageIndex) => {
+        const page = document.createElement("section");
+        page.className = "pdf-export-page";
+
+        if (pageIndex === 0) {
+          const eyebrow = document.createElement("p");
+          eyebrow.className = "pdf-export-eyebrow";
+          eyebrow.textContent = "灵感胶囊";
+          const title = document.createElement("h1");
+          title.textContent = boardTitle;
+          const summary = document.createElement("p");
+          summary.className = "pdf-export-summary";
+          summary.textContent = `共 ${sortedNotes.length} 条想法 · 按点赞数从高到低排列`;
+          page.append(eyebrow, title, summary);
+        } else {
+          const continuation = document.createElement("p");
+          continuation.className = "pdf-export-continuation";
+          continuation.textContent = boardTitle;
+          page.appendChild(continuation);
+        }
+
+        const list = document.createElement("div");
+        list.className = "pdf-export-list";
+        for (const note of pageNotes) {
+          const item = document.createElement("article");
+          item.className = "pdf-export-item";
+          const rank = document.createElement("span");
+          rank.className = "pdf-export-rank";
+          rank.textContent = String(sortedNotes.indexOf(note) + 1).padStart(2, "0");
+          const content = document.createElement("p");
+          content.className = "pdf-export-content";
+          content.textContent = note.text;
+          const meta = document.createElement("div");
+          meta.className = "pdf-export-meta";
+          const author = document.createElement("span");
+          author.textContent = note.author;
+          const likes = document.createElement("strong");
+          likes.textContent = `♥ ${note.likes}`;
+          meta.append(author, likes);
+          item.append(rank, content, meta);
+          list.appendChild(item);
+        }
+        if (pageNotes.length === 0) {
+          const empty = document.createElement("p");
+          empty.className = "pdf-export-empty";
+          empty.textContent = "还没有便利贴。";
+          list.appendChild(empty);
+        }
+        const footer = document.createElement("footer");
+        footer.className = "pdf-export-footer";
+        footer.textContent = `${pageIndex + 1} / ${pageGroups.length}`;
+        page.append(list, footer);
+        exportRoot.appendChild(page);
+        return page;
+      });
+
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+        compress: true,
+      });
+      for (let index = 0; index < pages.length; index += 1) {
+        const canvas = await html2canvas(pages[index], {
+          scale: 2,
+          backgroundColor: "#ffffff",
+          logging: false,
+          useCORS: true,
+        });
+        if (index > 0) pdf.addPage("a4", "portrait");
+        pdf.addImage(
+          canvas.toDataURL("image/jpeg", .94),
+          "JPEG",
+          0,
+          0,
+          210,
+          297,
+          undefined,
+          "FAST",
+        );
+      }
+      const safeTitle =
+        boardTitle.replace(/[\\/:*?"<>|]/g, "-").trim() || "灵感胶囊";
+      pdf.save(`${safeTitle}.pdf`);
+    } catch (error) {
+      console.error("PDF 导出失败", error);
+      window.alert("PDF 导出失败，请稍后重试。");
+    } finally {
+      exportRoot.remove();
+      setExportingPdf(false);
+    }
+  }
+
   function centerCanvas(behavior: ScrollBehavior = "smooth") {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -852,6 +976,15 @@ export default function Home() {
         </button>
         <button aria-label="复位画布" data-label="复位" onClick={resetView}>
           <ArrowsOut />
+        </button>
+        <span />
+        <button
+          aria-label="导出为 PDF"
+          data-label={exportingPdf ? "导出中…" : "导出 PDF"}
+          disabled={exportingPdf}
+          onClick={() => void exportBoardAsPdf()}
+        >
+          <FilePdf weight={exportingPdf ? "fill" : "regular"} />
         </button>
       </aside>
 

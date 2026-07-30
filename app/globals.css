@@ -186,6 +186,7 @@ button { color: inherit; }
   transform: translateY(-1px);
 }
 .tool-rail button:active { transform: scale(.96); }
+.tool-rail button:disabled { opacity: .5; cursor: wait; transform: none; }
 .tool-rail button.selected {
   color: #fff;
   background: var(--accent);
@@ -565,6 +566,110 @@ button { color: inherit; }
   background: var(--accent);
 }
 .confirm-actions .confirm-primary:hover { background: var(--accent-deep); }
+
+.pdf-export-root {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 794px;
+  color: #252525;
+  background: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.pdf-export-page {
+  position: relative;
+  width: 794px;
+  height: 1123px;
+  padding: 72px 76px 58px;
+  overflow: hidden;
+  background: #fff;
+}
+.pdf-export-eyebrow {
+  margin: 0 0 22px;
+  color: #787774;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: .08em;
+}
+.pdf-export-page h1 {
+  max-width: 610px;
+  margin: 0;
+  color: #202020;
+  font-size: 38px;
+  font-weight: 760;
+  line-height: 1.22;
+  letter-spacing: -.035em;
+}
+.pdf-export-summary {
+  margin: 16px 0 38px;
+  color: #787774;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.pdf-export-continuation {
+  margin: 0 0 28px;
+  padding-bottom: 18px;
+  overflow: hidden;
+  border-bottom: 1px solid #e9e9e7;
+  color: #787774;
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pdf-export-list { display: grid; }
+.pdf-export-item {
+  position: relative;
+  min-height: 136px;
+  padding: 22px 0 21px 44px;
+  border-top: 1px solid #ececea;
+}
+.pdf-export-item:last-child { border-bottom: 1px solid #ececea; }
+.pdf-export-rank {
+  position: absolute;
+  left: 0;
+  top: 25px;
+  color: #a4a39f;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pdf-export-content {
+  margin: 0 0 18px;
+  color: #252525;
+  font-size: 17px;
+  font-weight: 520;
+  line-height: 1.65;
+  letter-spacing: -.01em;
+}
+.pdf-export-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  color: #787774;
+  font-size: 12px;
+}
+.pdf-export-meta strong {
+  color: #555451;
+  font-size: 12px;
+  font-weight: 700;
+}
+.pdf-export-empty {
+  margin: 120px 0 0;
+  color: #9b9a97;
+  font-size: 16px;
+  text-align: center;
+}
+.pdf-export-footer {
+  position: absolute;
+  left: 76px;
+  right: 76px;
+  bottom: 30px;
+  color: #b0afac;
+  font-size: 10px;
+  text-align: right;
+}
 
 button:focus-visible, input:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--accent);
