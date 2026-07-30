@@ -12,6 +12,7 @@ type BoardNote = {
   color: string;
   likes: number;
   liked: boolean;
+  voters?: string[];
   createdAt: number;
   x: number;
   y: number;
@@ -29,7 +30,14 @@ type BoardAction =
   | { type: "add-note"; note: BoardNote }
   | { type: "delete-note"; id: string }
   | { type: "move-note"; id: string; x: number; y: number }
-  | { type: "toggle-like"; id: string; delta: 1 | -1; liked: boolean }
+  | {
+      type: "toggle-like";
+      id: string;
+      voterId: string;
+      liked: boolean;
+      likes?: number;
+      voters?: string[];
+    }
   | { type: "tidy-notes"; positions: Array<Pick<BoardNote, "id" | "x" | "y" | "tilt">> }
   | { type: "reset-board"; boardTitle: string }
   | { type: "increment-visitor" };
@@ -40,7 +48,7 @@ type ActionEnvelope = {
 };
 
 const BOARD_ID = "shared";
-const ROOM_ID = "shared-layout-v4";
+const ROOM_ID = "shared-votes-v5";
 const MAX_ACTION_BYTES = 32_000;
 const ALLOWED_ORIGINS = new Set([
   "https://kaleohano.github.io",
@@ -113,15 +121,28 @@ function applyAction(board: BoardState, action: BoardAction): BoardState {
     case "toggle-like":
       return {
         ...board,
-        notes: board.notes.map((note) =>
-          note.id === action.id
-            ? {
-                ...note,
-                likes: Math.max(0, note.likes + action.delta),
-                liked: action.liked,
-              }
-            : note,
-        ),
+        notes: board.notes.map((note) => {
+          if (note.id !== action.id || !action.voterId) return note;
+          if (typeof action.likes === "number" && Array.isArray(action.voters)) {
+            return {
+              ...note,
+              likes: action.likes,
+              liked: false,
+              voters: action.voters,
+            };
+          }
+          const voters = Array.isArray(note.voters) ? note.voters : [];
+          const alreadyLiked = voters.includes(action.voterId);
+          if (alreadyLiked === action.liked) return note;
+          return {
+            ...note,
+            likes: Math.max(0, note.likes + (action.liked ? 1 : -1)),
+            liked: false,
+            voters: action.liked
+              ? [...voters, action.voterId]
+              : voters.filter((id) => id !== action.voterId),
+          };
+        }),
       };
     case "tidy-notes": {
       const positions = new Map(action.positions.map((position) => [position.id, position]));
@@ -164,6 +185,15 @@ export class BoardRoom extends DurableObject<Env> {
         );
         CREATE TABLE IF NOT EXISTS note_tombstones (
           id TEXT PRIMARY KEY
+        );
+        CREATE TABLE IF NOT EXISTS note_vote_baselines (
+          note_id TEXT PRIMARY KEY,
+          likes INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS note_votes (
+          note_id TEXT NOT NULL,
+          voter_id TEXT NOT NULL,
+          PRIMARY KEY (note_id, voter_id)
         );
       `);
     });
@@ -251,8 +281,15 @@ export class BoardRoom extends DurableObject<Env> {
         "INSERT INTO note_tombstones (id) VALUES (?) ON CONFLICT(id) DO NOTHING",
         action.id,
       );
+      this.ctx.storage.sql.exec("DELETE FROM note_votes WHERE note_id = ?", action.id);
+      this.ctx.storage.sql.exec(
+        "DELETE FROM note_vote_baselines WHERE note_id = ?",
+        action.id,
+      );
     } else if (action.type === "reset-board") {
-      this.ctx.storage.sql.exec("DELETE FROM note_additions; DELETE FROM note_tombstones;");
+      this.ctx.storage.sql.exec(
+        "DELETE FROM note_additions; DELETE FROM note_tombstones; DELETE FROM note_votes; DELETE FROM note_vote_baselines;",
+      );
     }
 
     let current = this.readStoredBoard();
@@ -261,8 +298,46 @@ export class BoardRoom extends DurableObject<Env> {
       current = this.readStoredBoard();
     }
     if (!current) throw new Error("Shared board initialization failed");
-    const normalizedAction =
-      action.type === "add-note"
+    const normalizedAction: BoardAction =
+      action.type === "toggle-like"
+        ? (() => {
+            const note = current.board.notes.find((item) => item.id === action.id);
+            if (!note || !action.voterId) return action;
+            this.ctx.storage.sql.exec(
+              "INSERT INTO note_vote_baselines (note_id, likes) VALUES (?, ?) ON CONFLICT(note_id) DO NOTHING",
+              action.id,
+              note.likes,
+            );
+            if (action.liked) {
+              this.ctx.storage.sql.exec(
+                "INSERT INTO note_votes (note_id, voter_id) VALUES (?, ?) ON CONFLICT(note_id, voter_id) DO NOTHING",
+                action.id,
+                action.voterId,
+              );
+            } else {
+              this.ctx.storage.sql.exec(
+                "DELETE FROM note_votes WHERE note_id = ? AND voter_id = ?",
+                action.id,
+                action.voterId,
+              );
+            }
+            const voters = this.ctx.storage.sql
+              .exec<{ voter_id: string }>(
+                "SELECT voter_id FROM note_votes WHERE note_id = ? ORDER BY voter_id",
+                action.id,
+              )
+              .toArray()
+              .map((row) => row.voter_id);
+            const baseline =
+              this.ctx.storage.sql
+                .exec<{ likes: number }>(
+                  "SELECT likes FROM note_vote_baselines WHERE note_id = ?",
+                  action.id,
+                )
+                .toArray()[0]?.likes || 0;
+            return { ...action, likes: baseline + voters.length, voters };
+          })()
+        : action.type === "add-note"
         ? {
             ...action,
             note:
@@ -306,7 +381,16 @@ export class BoardRoom extends DurableObject<Env> {
       updatedAt,
     );
     this.ctx.waitUntil(this.ctx.storage.setAlarm(Date.now() + 250));
-    return { board, updatedAt, action: normalizedAction };
+    const broadcastAction =
+      normalizedAction.type === "toggle-like"
+        ? {
+            ...normalizedAction,
+            likes: board.notes.find((note) => note.id === normalizedAction.id)?.likes,
+            voters:
+              board.notes.find((note) => note.id === normalizedAction.id)?.voters || [],
+          }
+        : normalizedAction;
+    return { board, updatedAt, action: broadcastAction };
   }
 
   private broadcast(message: string) {

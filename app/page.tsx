@@ -28,6 +28,7 @@ type BoardNote = {
   color: string;
   likes: number;
   liked: boolean;
+  voters: string[];
   createdAt: number;
   x: number;
   y: number;
@@ -74,7 +75,14 @@ type BoardAction =
   | { type: "add-note"; note: BoardNote }
   | { type: "delete-note"; id: string }
   | { type: "move-note"; id: string; x: number; y: number }
-  | { type: "toggle-like"; id: string; delta: 1 | -1; liked: boolean }
+  | {
+      type: "toggle-like";
+      id: string;
+      voterId: string;
+      liked: boolean;
+      likes?: number;
+      voters?: string[];
+    }
   | { type: "tidy-notes"; positions: Array<Pick<BoardNote, "id" | "x" | "y" | "tilt">> }
   | { type: "reset-board"; boardTitle: string }
   | { type: "increment-visitor" };
@@ -83,6 +91,7 @@ const COLORS = ["butter", "rose", "blue", "green", "violet"];
 const NOTE_POSITION_SCALE = 12;
 const DEFAULT_BOARD_TITLE = "下一个值得尝试的点子是什么？";
 const BOARD_STORAGE_KEY = "inspiration-capsule-board";
+const VOTER_STORAGE_KEY = "inspiration-capsule-voter-id";
 const SHARED_BOARD_URLS = [
   "https://inspiration-capsule-board-api.pages.dev/api/board",
   "https://inspiration-capsule-shared-board.inspiration-capsule.workers.dev/api/board",
@@ -98,6 +107,7 @@ const STARTER_NOTES: BoardNote[] = [
     color: "butter",
     likes: 8,
     liked: false,
+    voters: [],
     createdAt: 3,
     x: 15,
     y: 18,
@@ -110,6 +120,7 @@ const STARTER_NOTES: BoardNote[] = [
     color: "rose",
     likes: 13,
     liked: false,
+    voters: [],
     createdAt: 2,
     x: 42,
     y: 28,
@@ -122,6 +133,7 @@ const STARTER_NOTES: BoardNote[] = [
     color: "blue",
     likes: 5,
     liked: false,
+    voters: [],
     createdAt: 1,
     x: 68,
     y: 14,
@@ -134,6 +146,7 @@ const STARTER_NOTES: BoardNote[] = [
     color: "green",
     likes: 3,
     liked: false,
+    voters: [],
     createdAt: 0,
     x: 32,
     y: 61,
@@ -181,6 +194,9 @@ function migrateNotes(value: unknown): BoardNote[] {
       color: COLORS.includes(note.color || "") ? note.color! : COLORS[index % COLORS.length],
       likes: note.likes || 0,
       liked: note.liked || false,
+      voters: Array.isArray(note.voters)
+        ? note.voters.filter((voter): voter is string => typeof voter === "string")
+        : [],
       createdAt: note.createdAt || index,
       x: typeof note.x === "number" ? note.x : 12 + (index % 3) * 28,
       y: typeof note.y === "number" ? note.y : 18 + Math.floor(index / 3) * 35,
@@ -212,19 +228,32 @@ export default function Home() {
   const scrollSaveFrameRef = useRef<number | null>(null);
   const latestRevisionRef = useRef(0);
   const socketRef = useRef<WebSocket | null>(null);
+  const voterIdRef = useRef("");
   const processedOperationsRef = useRef(new Set<string>());
   const titleInputFocusedRef = useRef(false);
   const visitorCountedRef = useRef(false);
   const effectiveTool = spacePressed ? "pan" : tool;
 
   useEffect(() => {
+    let voterId = window.localStorage.getItem(VOTER_STORAGE_KEY);
+    if (!voterId) {
+      voterId = crypto.randomUUID();
+      window.localStorage.setItem(VOTER_STORAGE_KEY, voterId);
+    }
+    voterIdRef.current = voterId;
+    const personalize = (value: unknown) =>
+      migrateNotes(value).map((note) => ({
+        ...note,
+        liked: note.voters.includes(voterId),
+      }));
+
     const savedBoard = window.localStorage.getItem(BOARD_STORAGE_KEY);
     if (savedBoard) {
       try {
         const snapshot = JSON.parse(savedBoard) as Partial<BoardSnapshot>;
         const title = snapshot.boardTitle?.trim() || DEFAULT_BOARD_TITLE;
         const name = snapshot.participant?.trim() || makeName();
-        setNotes(migrateNotes(snapshot.notes));
+        setNotes(personalize(snapshot.notes));
         setParticipant(name);
         setBoardTitle(title);
         setTitleDraft(title);
@@ -257,7 +286,7 @@ export default function Home() {
     const savedVisitors = window.localStorage.getItem("sparkboard-visitors");
     if (savedNotes) {
       try {
-        setNotes(migrateNotes(JSON.parse(savedNotes)));
+        setNotes(personalize(JSON.parse(savedNotes)));
       } catch {
         setNotes(STARTER_NOTES);
       }
@@ -336,7 +365,12 @@ export default function Home() {
       if (!board || updatedAt < latestRevisionRef.current) return;
       latestRevisionRef.current = updatedAt;
       const title = board.boardTitle?.trim() || DEFAULT_BOARD_TITLE;
-      setNotes(migrateNotes(board.notes));
+      setNotes(
+        migrateNotes(board.notes).map((note) => ({
+          ...note,
+          liked: note.voters.includes(voterIdRef.current),
+        })),
+      );
       setBoardTitle(title);
       if (!titleInputFocusedRef.current) setTitleDraft(title);
       setVisitorCount(
@@ -371,8 +405,12 @@ export default function Home() {
               note.id === action.id
                 ? {
                     ...note,
-                    likes: Math.max(0, note.likes + action.delta),
-                    liked: action.liked,
+                    likes:
+                      typeof action.likes === "number" ? action.likes : note.likes,
+                    voters: action.voters || note.voters,
+                    liked: (action.voters || note.voters).includes(
+                      voterIdRef.current,
+                    ),
                   }
                 : note,
             ),
@@ -463,6 +501,24 @@ export default function Home() {
                 setNotes((current) =>
                   current.map((note) =>
                     note.id === confirmedAction.note.id ? confirmedAction.note : note,
+                  ),
+                );
+              } else if (confirmedAction.type === "toggle-like") {
+                setNotes((current) =>
+                  current.map((note) =>
+                    note.id === confirmedAction.id
+                      ? {
+                          ...note,
+                          likes:
+                            typeof confirmedAction.likes === "number"
+                              ? confirmedAction.likes
+                              : note.likes,
+                          voters: confirmedAction.voters || note.voters,
+                          liked: (confirmedAction.voters || note.voters).includes(
+                            voterIdRef.current,
+                          ),
+                        }
+                      : note,
                   ),
                 );
               }
@@ -602,6 +658,7 @@ export default function Home() {
       color,
       likes: 0,
       liked: false,
+      voters: [],
       createdAt: Date.now(),
       x: 14 + ((slot * 19) % 66),
       y: 16 + ((slot * 23) % 58),
@@ -616,18 +673,28 @@ export default function Home() {
   function toggleLike(id: string) {
     const note = notes.find((item) => item.id === id);
     if (!note) return;
-    const liked = !note.liked;
+    const voterId = voterIdRef.current;
+    if (!voterId) return;
+    const alreadyLiked = note.voters.includes(voterId);
+    const liked = !alreadyLiked;
     setNotes((current) =>
       current.map((note) =>
         note.id === id
-          ? { ...note, liked: !note.liked, likes: note.likes + (note.liked ? -1 : 1) }
+          ? {
+              ...note,
+              liked,
+              likes: Math.max(0, note.likes + (alreadyLiked ? -1 : 1)),
+              voters: alreadyLiked
+                ? note.voters.filter((id) => id !== voterId)
+                : [...note.voters, voterId],
+            }
           : note,
       ),
     );
     void sendBoardAction({
       type: "toggle-like",
       id,
-      delta: note.liked ? -1 : 1,
+      voterId,
       liked,
     });
   }
