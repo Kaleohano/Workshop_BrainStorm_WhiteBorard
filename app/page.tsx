@@ -1083,6 +1083,7 @@ export default function Home() {
       <section
         ref={viewportRef}
         className={`canvas-viewport ${effectiveTool === "pan" ? "pan-mode" : ""}`}
+        style={{ "--zoom": zoom / 100 } as React.CSSProperties}
         aria-label="自由脑暴白板"
         onPointerDown={startPan}
         onPointerMove={moveCanvas}

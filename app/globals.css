@@ -238,11 +238,15 @@ button { color: inherit; }
 }
 
 .canvas-viewport {
+  --zoom: 1;
   position: fixed;
   inset: 0;
   overflow: auto;
   overscroll-behavior: none;
   scrollbar-width: none;
+  background-color: var(--canvas);
+  background-image: radial-gradient(circle, var(--grid) 1.25px, transparent 1.35px);
+  background-size: calc(32px * var(--zoom)) calc(32px * var(--zoom));
 }
 .canvas-viewport::-webkit-scrollbar { display: none; }
 .canvas-viewport.pan-mode { cursor: grab; touch-action: none; }
@@ -254,14 +258,13 @@ button { color: inherit; }
 }
 
 .canvas {
-  --zoom: 1;
   --canvas-size: 50000px;
   position: relative;
   width: var(--canvas-size);
   height: var(--canvas-size);
   scale: var(--zoom);
   transform-origin: 50% 50%;
-  background-color: var(--canvas);
+  background-color: transparent;
   background-image: radial-gradient(circle, var(--grid) 1.25px, transparent 1.35px);
   background-size: 32px 32px;
 }
