@@ -520,8 +520,10 @@ export default function Home() {
                           ),
                         }
                       : note,
-                  ),
+                    ),
                 );
+              } else if (confirmedAction.type === "increment-visitor") {
+                setVisitorCount((current) => current + 1);
               }
             } else {
               applyRemoteAction(message.action, message.updatedAt || 0);
