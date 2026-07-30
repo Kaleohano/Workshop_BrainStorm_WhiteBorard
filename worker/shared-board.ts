@@ -110,6 +110,8 @@ function applyAction(board: BoardState, action: BoardAction): BoardState {
 }
 
 export class BoardRoom extends DurableObject<Env> {
+  private operationQueue: Promise<void> = Promise.resolve();
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ctx.blockConcurrencyWhile(async () => {
@@ -183,20 +185,31 @@ export class BoardRoom extends DurableObject<Env> {
     }
   }
 
-  private async applyEnvelope(envelope: ActionEnvelope) {
-    if (!envelope.operationId || !envelope.action?.type) {
-      throw new Error("Invalid action envelope");
-    }
-    const result = await this.mutate(envelope.action);
-    this.broadcast(
-      JSON.stringify({
-        type: "action",
-        operationId: envelope.operationId,
-        action: envelope.action,
-        updatedAt: result.updatedAt,
-      }),
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.operationQueue.then(operation, operation);
+    this.operationQueue = result.then(
+      () => undefined,
+      () => undefined,
     );
-    return result.updatedAt;
+    return result;
+  }
+
+  private applyEnvelope(envelope: ActionEnvelope) {
+    if (!envelope.operationId || !envelope.action?.type) {
+      return Promise.reject(new Error("Invalid action envelope"));
+    }
+    return this.enqueue(async () => {
+      const result = await this.mutate(envelope.action);
+      this.broadcast(
+        JSON.stringify({
+          type: "action",
+          operationId: envelope.operationId,
+          action: envelope.action,
+          updatedAt: result.updatedAt,
+        }),
+      );
+      return result.updatedAt;
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
