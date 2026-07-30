@@ -1172,14 +1172,13 @@ export default function Home() {
               标题将改为“{pendingTitle}”。确认后，当前便利贴和观看人数会被清空，此操作无法撤销。
             </p>
             <div className="confirm-actions">
-              <button type="button" onClick={cancelBoardTitleChange}>
+              <button type="button" onClick={cancelBoardTitleChange} autoFocus>
                 取消
               </button>
               <button
                 type="button"
                 className="confirm-primary"
                 onClick={confirmBoardTitleChange}
-                autoFocus
               >
                 确认并清空
               </button>
