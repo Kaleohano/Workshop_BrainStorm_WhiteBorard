@@ -892,12 +892,12 @@ export default function Home() {
           <Note weight="fill" />
         </button>
         <label>
-          <span>写一张便利贴</span>
           <textarea
             ref={inputRef}
+            aria-label="写下一个想法"
             value={text}
             onChange={(event) => setText(event.target.value.slice(0, 140))}
-            placeholder="输入一个想法，按 Ctrl + Enter 贴上画布"
+            placeholder="写下一个想法"
             rows={1}
             onKeyDown={(event) => {
               if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
