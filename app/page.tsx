@@ -3,7 +3,6 @@
 import {
   ArrowsOut,
   CursorClick,
-  DotsThree,
   HandGrabbing,
   Heart,
   Minus,
@@ -492,12 +491,6 @@ export default function Home() {
     return () => window.removeEventListener("pagehide", saveBeforeLeaving);
   }, [hydrated, cloudReady]);
 
-  function changeParticipant(value: string) {
-    const name = value.slice(0, 14);
-    setParticipant(name);
-    if (name.trim()) window.localStorage.setItem("sparkboard-participant", name.trim());
-  }
-
   async function sendBoardAction(action: BoardAction) {
     const operationId = crypto.randomUUID();
     const socket = socketRef.current;
@@ -779,18 +772,10 @@ export default function Home() {
 
         <div className="participant">
           <span className="avatar">{participant.trim().slice(0, 1) || "你"}</span>
-          <label>
+          <div className="participant-copy">
             <span>你在白板上的名字</span>
-            <input
-              aria-label="你在白板上的名字"
-              value={participant}
-              onChange={(event) => changeParticipant(event.target.value)}
-              onBlur={() => {
-                if (!participant.trim()) changeParticipant(makeName());
-              }}
-            />
-          </label>
-          <DotsThree weight="bold" />
+            <strong className="participant-name">{participant}</strong>
+          </div>
         </div>
       </header>
 
